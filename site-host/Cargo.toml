@@ -1,0 +1,25 @@
+[package]
+name = "agentrix-site-host"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "Agentrix Website Phase 0: host scaffold wiring one site over durable SQLite stores with a fail-loud self-check"
+
+[workspace]
+
+[dependencies]
+adk-agent = { path = "../../adk-rust/adk-agent", features = ["ambient"] }
+adk-core = { path = "../../adk-rust/adk-core" }
+adk-kernel = { path = "../../adk-rust/adk-kernel", features = ["charter"] }
+adk-session = { path = "../../adk-rust/adk-session", features = ["sqlite"] }
+awp-types = { path = "../../adk-rust/awp-types" }
+chrono = "0.4"
+serde_json = "1.0"
+sqlx = { version = "0.9", default-features = false, features = ["sqlite", "runtime-tokio", "chrono", "json"] }
+tokio = { version = "1.40", features = ["full"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+uuid = { version = "1", features = ["v4", "serde"] }
+
+[dev-dependencies]
+tempfile = "3"
