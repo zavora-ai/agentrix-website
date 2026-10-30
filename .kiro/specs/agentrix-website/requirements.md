@@ -24,8 +24,8 @@ site from read-only dual serving to a fully autonomous business.
 - **Site**: one website tenant: its content, agents, jobs, budgets and owner.
 - **TenantKernel**: one `adk-kernel` instance per site, with per-site durable
   stores and partitions.
-- **Charter job**: one of seven standing jobs — Probe, Watch, Content, Reviews,
-  Outreach, Support, Digest — each woken by schedule or signal.
+- **Charter job**: one of seven standing jobs, each presented under its role name
+  (see Charter roles) and woken by schedule or signal.
 - **Site process**: the kernel process kind a charter job runs as (`site.probe`,
   `site.watch`, `site.content`, `site.reviews`, `site.outreach`, `site.support`,
   `site.digest`).
@@ -54,6 +54,52 @@ site from read-only dual serving to a fully autonomous business.
 - **Quiet hours**: the owner's nightly window during which proactive runs wait.
 - **Freeze**: the governance kill switch halting autonomous action site-wide.
 
+## Charter roles
+
+The seven charter jobs are the site's standing staff. Owner-facing surfaces
+name them by role; the framework identifiers stay unchanged behind the names.
+
+| Role | Job | Process | Agent | Wakes | Starts at |
+|---|---|---|---|---|---|
+| Security Guard | protect | `site.probe` | Guardian (workflow, model-free) | Every 5 minutes | ActReversibleOnly |
+| Facilities Manager | hosting | `site.watch` | Guardian (workflow, model-free) | Daily 06:00 UTC | Propose |
+| Content Editor | freshness | `site.content` | Growth | `content_gap` signal | ActWithinBudget |
+| Reputation Manager | social | `site.reviews` | Growth | `review_seen` signal | Propose |
+| Sales Rep | nurture | `site.outreach` | Revenue | Daily 09:00 UTC | ActWithinBudget |
+| Chief of Staff | owner-questions | `site.support` | Steward | `support_escalation` signal | ActWithinBudget |
+| Analyst | weekly-review | `site.digest` | Steward (workflow) | Mondays 07:00 UTC | ActWithinBudget |
+
+- **Security Guard.** Mandate: the site stays the site — served bytes match the
+  signed release, abusive requesters are throttled, drift and tampering raise
+  incidents. Effects: read-only checks, drift rollback, abuse throttling;
+  rollback and read-only are its only incident acts. It never calls a model,
+  never publishes, never spends.
+- **Facilities Manager.** Mandate: the lights stay on — hosting bills, domain
+  renewals, certificate expiry, backup integrity, advisory checks against the
+  edge lockfile. Effects: proposes renewals and fixes; renewals within budget.
+  It never changes infrastructure unwatched and never publishes content.
+- **Content Editor.** Mandate: everything true and fresh — stale facts, broken
+  links, outdated pages, unanswered visitor questions. Effects: edits within
+  budget; new pages are proposed, never published directly. It never publishes
+  without an approval card.
+- **Reputation Manager.** Mandate: earn and defend trust — replies to reviews in
+  the owner's voice, disputes unfair ratings, rolls ratings into the reputation
+  KPI. Effects: drafted replies and disputes via the playbook, starting at
+  Propose. It never posts publicly unwatched and never fabricates reviews.
+- **Sales Rep.** Mandate: turn attention into revenue — qualifies captured
+  leads, nurtures with consent, follows up quotes and bookings, hands warm
+  prospects to the owner with context. Effects: outreach within the playbook
+  and budget caps. It never contacts anyone without consent basis, never
+  exceeds budget, never closes terms the owner must sign.
+- **Chief of Staff.** Mandate: no question dies — resolves what the Concierge
+  escalates, drafts held replies, routes owner decisions to the inbox with
+  recommendations. Effects: answers, drafts, routed decisions. It never speaks
+  for the owner externally and never decides cards itself.
+- **Analyst.** Mandate: account for everything — composes the weekly review of
+  health, spend, actions taken and open cards, and files it as a decision
+  card. Effects: reads every store, writes one card. It never acts on the
+  business and never edits the past; the report is append-only history.
+
 ## Requirements
 
 ### Requirement 1: Governed charter jobs
@@ -75,6 +121,9 @@ freshens, promotes and accounts for itself without unwatched side effects.
 5. WHILE the site is frozen, THE TenantKernel SHALL start no proactive run.
 6. THE site SHALL defer proactive runs that fall inside quiet hours until the
    window ends.
+7. THE site SHALL name the seven charter jobs Security Guard, Facilities
+   Manager, Content Editor, Reputation Manager, Sales Rep, Chief of Staff and
+   Analyst in owner-facing surfaces.
 
 ### Requirement 2: Dual-audience serving
 

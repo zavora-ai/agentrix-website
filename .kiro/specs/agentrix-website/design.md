@@ -22,13 +22,13 @@ flowchart TD
       KPS[KPI tracker · nightly] --> K
     end
     subgraph RUNS[runs · kernel starts, product executes]
-      K --> PR[Probe · model-free]
-      K --> WA[Watch · model-free]
-      K --> CO[Content · Growth]
-      K --> RE[Reviews · Growth]
-      K --> OU[Outreach · Revenue]
-      K --> SU[Support · Steward]
-      K --> DI[Digest · Steward]
+      K --> PR[Security Guard · model-free]
+      K --> WA[Facilities Manager · model-free]
+      K --> CO[Content Editor · Growth]
+      K --> RE[Reputation Manager · Growth]
+      K --> OU[Sales Rep · Revenue]
+      K --> SU[Chief of Staff · Steward]
+      K --> DI[Analyst · Steward]
       LAD[autonomy ladder] -.- RUNS
       KPIBreach[KPI breach] -.->|pause/demote| LAD
     end
@@ -65,7 +65,7 @@ files a decision card to the inbox.
 |---|---|---|
 | `site-host` | Store opening, trigger registration, self-check, kernel build | `adk-kernel`, `adk-session` |
 | TenantKernel wiring | Partitions, supervisors, wake router, control plane | `adk-kernel` managed feature |
-| Runner targets | Probe, Watch, Content, Reviews, Outreach, Support, Digest executors | Product code (new) |
+| Runner targets | Security Guard, Facilities Manager, Content Editor, Reputation Manager, Sales Rep, Chief of Staff, Analyst executors | Product code (new) |
 | KPI sources | Commerce, beacon, reviews, inbox metrics feeding `KpiTracker` | Product code (new) |
 | Signal emitters | Gap detector, review watcher, lead capture, escalation classifier | Product code (new) |
 | AWP edge | Human pages, twins, CLI, rate limits, capability policy | `adk-website` edge + product twins |

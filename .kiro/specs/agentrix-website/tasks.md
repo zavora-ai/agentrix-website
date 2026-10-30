@@ -53,13 +53,13 @@ where work can fan out.
   - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5, 8.3_
 
 - [ ] 3. Phase 2: draft-first content
-  - Implement the Content runner target: gap signals to held drafts, never
-    direct publish.
+  - Implement the Content Editor runner target: gap signals to held drafts,
+    never direct publish.
   - Build the unified inbox: decision cards for approvals, drafts, incidents
     and digests with exactly-once execution.
   - Checkpoint: file a draft, restart the host, approve the card; the draft
-    applies once.
-  - _Requirements: 1.2, 3.1, 3.2, 6.2_
+    applies once; cards name jobs by role (Content Editor, not freshness).
+  - _Requirements: 1.2, 1.7, 3.1, 3.2, 6.2_
 
 - [ ] 4. Phase 3: publish plus rollback
   - Wire the LaunchGate: release admission on approvals, parity and policy.
@@ -78,7 +78,7 @@ where work can fan out.
   - _Requirements: 1.2, 4.5, 5.2, 8.2_
 
 - [ ] 6. Phase 5: email plus support
-  - Connect live mailboxes; the Support target drafts held replies for
+  - Connect live mailboxes; the Chief of Staff target drafts held replies for
     owner-questions.
   - Enforce tier checks: a tier-above send without approval is impossible, not
     merely unapproved.
@@ -87,10 +87,10 @@ where work can fan out.
   - _Requirements: 1.3, 3.1_
 
 - [ ] 7. Phase 6: campaigns plus social
-  - Implement the Outreach target and the Reviews target with live Mastodon
-    posting and recorded (never spent) ads.
+  - Implement the Sales Rep target and the Reputation Manager target with
+    live Mastodon posting and recorded (never spent) ads.
   - Wire KPI sources and breach policy: caps halt spend, breaches demote jobs.
-  - Implement the Steward's weekly Digest as a filed decision card.
+  - Implement the Analyst's weekly review as a filed decision card.
   - Checkpoint: breach a test KPI; the area's jobs demote before the next
     wake; spend halts at cap.
   - _Requirements: 1.4, 3.3, 3.6_
@@ -105,8 +105,8 @@ where work can fan out.
   - _Requirements: 3.2, 3.3, 5.5_
 
 - [ ] 9. Phase 8: self-defense plus costs
-  - Implement the Probe and Watch runner targets model-free with log, KPI and
-    stock wakes.
+  - Implement the Security Guard and Facilities Manager runner targets
+    model-free with log, KPI and stock wakes.
   - Add quiet-hours deferral, freeze propagation and the incident card plus
     rollback drill.
   - Enforce tenant isolation end to end: per-site kernels, stores, approvals
