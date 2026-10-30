@@ -72,3 +72,8 @@ Inherited from Agentrix OS and kept without exception:
 - Autonomy is supervised. Holds, approvals, and the freeze switch are
   features shown proudly, never friction hidden from the camera.
 - "World's first" claims are scoped to what is demonstrated live.
+
+## License
+
+Apache 2.0 — see [LICENSE](LICENSE). Day 3 implementation happens in this
+public repo, in the open.
