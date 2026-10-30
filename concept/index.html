@@ -1,0 +1,234 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agentrix Website — Website 4.0 Concept</title>
+<style>
+  :root{color-scheme:light;--bg:#fff;--card:#fff;--raised:#f6f7f9;--border:#e6e8ec;--text:#0f172a;--t2:#475569;--label:#64748b;--brand:#f74c00;--accent:#c03a00;--button:#c03a00;--onb:#fff;--ok:#15803d;--info:#1d4ed8;--wait:#b3360a;--waitbg:#fdeadf;--font:"Charter",Georgia,serif;--sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;--r:14px}
+  @media (prefers-color-scheme:dark){:root{color-scheme:dark;--bg:#0a1628;--card:#15233b;--raised:#1c2b45;--border:#2a3d5c;--text:#f1f5f9;--t2:#d5dee8;--label:#a7b4c6;--accent:#ff9c78;--button:#f74c00;--onb:#0a1628;--waitbg:#3b2a2c}}
+  *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:15px/1.55 var(--font)}
+  .sans{font-family:var(--sans)}
+  header{max-width:1180px;margin:0 auto;padding:28px 20px 6px}
+  .lock{display:flex;align-items:flex-start;gap:16px;flex-wrap:wrap}
+  h1{font-size:30px;margin:0;letter-spacing:-.02em;font-family:var(--sans);font-weight:800}
+  h1 span{color:var(--brand)}
+  .brand{margin-left:auto;font:700 17px var(--sans);display:inline-flex;gap:8px;align-items:center}
+  .dot{width:11px;height:11px;border-radius:50%;background:var(--brand)}
+  .tag{font-size:16px;color:var(--t2);max-width:70ch;margin:6px 0 0}
+  .tag b{color:var(--text)}
+  .credit{display:inline-block;margin-top:10px;font:600 12px var(--sans);border:1px solid var(--border);background:var(--raised);border-radius:999px;padding:4px 11px;color:var(--t2)}
+  .credit b{color:var(--accent)}
+  .controls{max-width:1180px;margin:0 auto;padding:14px 20px 0;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  button{font:600 14px var(--sans);border:1px solid var(--border);background:var(--card);color:var(--text);border-radius:10px;padding:9px 14px;cursor:pointer;min-height:40px}
+  button.primary{background:var(--button);color:var(--onb);border-color:transparent}
+  button.on{background:var(--text);color:var(--bg);border-color:transparent}
+  button.small{padding:6px 10px;min-height:34px;font-size:13px}
+  main{max-width:1180px;margin:0 auto;padding:16px 20px 90px}
+  .sky{border:1px solid var(--border);border-radius:18px;padding:18px 20px;background:var(--card);display:flex;gap:18px;flex-wrap:wrap;align-items:center}
+  .sky h2{font-size:24px;margin:0;font-family:var(--sans);letter-spacing:-.01em}
+  .open{font:700 12px var(--sans);border-radius:999px;padding:4px 11px;background:#dcfce7;color:#15803d}
+  @media (prefers-color-scheme:dark){.open{background:#133626;color:#4ade80}}
+  .sky p{margin:2px 0 0;color:var(--t2)}
+  .sky .stat{margin-left:auto;text-align:right;font-family:var(--sans)}
+  .sky .stat b{display:block;font-size:20px}
+  .sky .stat span{font-size:12px;color:var(--label)}
+  .districts{display:grid;grid-template-columns:1fr 1.15fr 1fr;gap:16px;margin-top:16px;align-items:start}
+  @media(max-width:900px){.districts{grid-template-columns:1fr}}
+  .district h3{font:700 12px var(--sans);letter-spacing:.06em;text-transform:uppercase;color:var(--label);margin:0 0 8px}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:var(--r);padding:14px;margin-bottom:12px}
+  .card.held{border-color:var(--wait);background:linear-gradient(var(--waitbg),var(--card) 60%)}
+  .card.bloom{animation:bloom .4s ease}
+  @keyframes bloom{from{opacity:0;transform:translateY(8px) scale(.98)}to{opacity:1;transform:none}}
+  .who{display:flex;gap:8px;align-items:center;font:700 12px var(--sans);color:var(--label);margin-bottom:5px}
+  .who i{width:8px;height:8px;border-radius:50%;background:var(--brand);flex:none}
+  .card h4{margin:0 0 4px;font-size:17px;font-family:var(--sans)}
+  .card p{margin:0 0 8px;color:var(--t2);font-size:14.5px}
+  .meta{font:12px var(--sans);color:var(--label)}
+  .price{font:800 19px var(--sans)}
+  .bar{height:5px;background:var(--border);border-radius:3px;overflow:hidden;margin:4px 0 8px}.bar i{display:block;height:100%;background:var(--info)}
+  .concierge{border:1.5px solid var(--brand)}
+  .verbs{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+  .verbs button{border-radius:999px;font-size:12.5px;min-height:32px;padding:5px 11px}
+  .gate{position:fixed;left:50%;transform:translateX(-50%);bottom:14px;width:min(760px,calc(100% - 24px));background:var(--card);border:1px solid var(--border);border-radius:16px;padding:10px;display:flex;gap:8px;align-items:center;box-shadow:0 10px 34px rgba(15,23,42,.16);z-index:5}
+  .gate input{flex:1;border:0;background:transparent;color:var(--text);font:16px var(--sans);padding:8px;min-width:0}
+  .gate input:focus{outline:none}
+  .panel{border:1px solid var(--border);border-radius:18px;background:var(--card);padding:18px 20px;margin-top:16px}
+  .panel h2{font:800 19px var(--sans);margin:0 0 4px}
+  .panel .lede{color:var(--t2);margin:0 0 12px}
+  .scrub{display:flex;gap:12px;align-items:center;flex-wrap:wrap;font-family:var(--sans)}
+  .scrub input{flex:1;min-width:220px;accent-color:var(--brand)}
+  .nightlog{font:13.5px/1.7 ui-monospace,Menlo,monospace;background:var(--raised);border:1px solid var(--border);border-radius:12px;padding:12px;white-space:pre-wrap;min-height:118px}
+  .agents{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px}
+  .agents .card{margin:0}
+  .digest{font:12.5px ui-monospace,Menlo,monospace;background:#0a1628;color:#dbeafe;border-radius:12px;padding:14px;white-space:pre-wrap;overflow:auto;overflow-wrap:anywhere;min-width:0}
+  .panel,.twocol>*{min-width:0}
+  @media (prefers-color-scheme:light){.digest{background:#0f172a}}
+  .twocol{display:grid;grid-template-columns:1fr 1fr;gap:16px}@media(max-width:900px){.twocol{grid-template-columns:1fr}}
+  .honest{font:12.5px var(--sans);color:var(--label);margin-top:10px}
+  footer{max-width:1180px;margin:0 auto;padding:0 20px 110px;color:var(--label);font-size:13px}
+  [hidden]{display:none!important}
+  @media (prefers-reduced-motion:reduce){.card.bloom{animation:none}}
+</style>
+</head>
+<body>
+<header>
+  <div class="lock">
+    <div>
+      <h1>Classy Perfumes <span>— a Website 4.0</span></h1>
+      <p class="tag">Agentrix Website: the world's first <b>Website 4.0</b> for the agentic era. A place you enter, run by staff you can see working.</p>
+      <span class="credit">Concept by <b>Agentrix</b> · Built on ADK-Rust + Meta Muse · Zavora Technologies</span>
+    </div>
+    <span class="brand"><i class="dot"></i>ADK-Rust</span>
+  </div>
+</header>
+
+<div class="controls sans" role="tablist" aria-label="Views">
+  <button id="vHuman" class="on">Visitor World</button>
+  <button id="vOwner">Owner's Back-Office</button>
+  <button id="vAgent">Agent View (machine twin)</button>
+  <button id="birth" class="primary">Replay the Birth — migrate a WordPress site</button>
+</div>
+
+<main>
+  <!-- VISITOR WORLD -->
+  <section id="worldHuman">
+    <div class="sky">
+      <div>
+        <h2>Karibu — we are open</h2>
+        <p>Nairobi · Uhuru Highway · The night team answered 3 messages while you slept.</p>
+      </div>
+      <span class="open">OPEN · TILL 22:00</span>
+      <div class="stat"><b>14</b><span>ORDERS TODAY</span></div>
+      <div class="stat"><b>4.9</b><span>FROM 212 REVIEWS</span></div>
+    </div>
+
+    <div class="districts">
+      <div class="district">
+        <h3>Storefront District</h3>
+        <div id="shop"></div>
+      </div>
+      <div class="district">
+        <h3>Center of the Field</h3>
+        <article class="card concierge">
+          <div class="who"><i></i>NIA · CONCIERGE</div>
+          <h4>Karibu sana. Order, book, or just looking around?</h4>
+          <p>I can check stock, track an order, or book you a scent consultation. Refunds go through a person — I will bring one in if you need.</p>
+          <div class="verbs" id="verbChips"></div>
+        </article>
+        <div id="feed"></div>
+      </div>
+      <div class="district">
+        <h3>Story + Service District</h3>
+        <div id="side"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- OWNER WORLD -->
+  <section id="worldOwner" hidden>
+    <div class="panel">
+      <h2>Back-Office — the night shift, on record</h2>
+      <p class="lede">Scrub the night. Everything the site did is a card; everything above its authority is waiting for you.</p>
+      <div class="scrub"><span>00:00</span><input type="range" id="scrub" min="0" max="6" step="1" value="6" aria-label="Scrub the night"><span>07:00</span><b id="clock">07:00 · Night Report ready</b></div>
+      <div class="nightlog" id="nightlog"></div>
+      <p class="honest">Autonomy here is a ladder, not a leap: Editor proposes, Watchman may act reversibly, money and DNS always wait for you.</p>
+    </div>
+    <div style="height:16px"></div>
+    <div class="agents" id="agents"></div>
+  </section>
+
+  <!-- AGENT VIEW -->
+  <section id="worldAgent" hidden>
+    <div class="twocol">
+      <div class="panel" style="margin-top:0">
+        <h2>What AI agents see</h2>
+        <p class="lede">Verified by credentials — never by user-agent. People never get this skin; agents never scrape the human one.</p>
+        <div class="digest" id="manifest"></div>
+      </div>
+      <div class="panel" style="margin-top:0">
+        <h2>Same release, both audiences</h2>
+        <p class="lede">One signed release digest under the human World and its machine twin. If they ever differ, the gate refuses to publish.</p>
+        <div class="digest" id="digestBox"></div>
+        <div class="row" style="margin-top:12px"><button class="primary" id="buyAgent">Simulate a partner agent buying (AWP)</button></div>
+        <div id="agentFeed" style="margin-top:12px"></div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>Agentrix Website concept — interactive vision draft. Simulated in-page; labeled as such. Live system: adk-kernel wakes the staff, adk-harness holds what must be held, Muse does the thinking, AWP serves the agents.</footer>
+
+<div class="gate">
+  <input id="verb" type="text" placeholder="Say a verb… “Track my order” · “Book Friday for two” · “Habla español?”" aria-label="Say a verb">
+  <button class="primary" id="say">Say it</button>
+</div>
+
+<script>
+const $=id=>document.getElementById(id);
+const PRODUCTS=[
+ {n:"Amber Noir — 50ml",p:"Warm amber, smoked vanilla, a whisper of oud. Made for Nairobi evenings.",price:"KSh 6,400",stock:"In stock · Uhuru Highway",nov:82},
+ {n:"Citrus Dawn — 50ml",p:"Bergamot and neroli over a clean musk base. The morning one.",price:"KSh 4,900",stock:"Only 3 left",nov:74}];
+const VERBS=["Track my order","Book Friday for two","Habla español?","Do you ship to Mombasa?","Talk to a person"];
+const NIGHT=[
+ "00:40 · Concierge answered a sizing question (French, grounded in the size guide)",
+ "01:15 · Watchman rate-limited a credential-stuffing burst; owner not woken",
+ "03:12 · Watchman HELD a publish: claim “clinically proven” had no Known source",
+ "04:05 · Editor drafted “Scents for the rainy season” in the owner's voice — awaiting approval",
+ "05:30 · Support reply sent in-ladder (order status); refund request HELD for owner",
+ "06:20 · Marketer proposed a rainy-season campaign, budget-capped by charter",
+ "07:00 · Night Report published to the owner's inbox"];
+const AGENTS=[
+ {n:"Nia · Concierge",s:"Public · Observe→Reply",d:"Greets, answers grounded questions, qualifies signals. Cannot publish, refund, or see the back office."},
+ {n:"Editor",s:"Back-office · Propose",d:"Drafts in the owner's voice with cited claims. Publishes only past the gate and your approval."},
+ {n:"Watchman",s:"Back-office · Act reversibly",d:"Reads the logs, blocks bursts, rolls back bad releases. Raises Incident cards instead of waking you."},
+ {n:"Marketer",s:"Back-office · Propose",d:"Campaigns with charter budget caps. Live ad spend is always held (recorded adapter today)."},
+ {n:"Cashier",s:"Back-office · Always held",d:"Quotes, orders, payments via consent + idempotency. Money never moves on its own."},
+ {n:"Keeper",s:"Back-office · Watch",d:"Costs, uptime, renewals. Projects spend and files the Digest before you wake."}];
+function card(html,cls){return `<article class="card ${cls||''}">${html}</article>`}
+function who(n){return `<div class="who"><i></i>${n}</div>`}
+function renderShop(){$("shop").innerHTML=PRODUCTS.map(p=>card(`${who("STOREFRONT · STOCK-TRUE")}<h4>${p.n}</h4><p>${p.p}</p><div class="price">${p.price}</div><div class="meta">${p.stock}</div><div class="meta" style="margin-top:6px">Loved by regulars</div><div class="bar"><i style="width:${p.nov}%"></i></div><div class="verbs"><button data-verb="Book Friday for two">Book a consultation</button><button data-verb="Track my order">Track order</button></div>`)).join("");
+ document.querySelectorAll("[data-verb]").forEach(b=>b.onclick=()=>say(b.dataset.verb));}
+function renderSide(){$("side").innerHTML=
+ card(`${who("EDITOR · PUBLISHED")}<h4>Scents for the rainy season</h4><p>How amber behaves when the long rains come — and the three notes that survive a Nairobi downpour.</p><div class="meta">Published 06:58 · gate: claims verified · next: rainy-season campaign (held)</div>`)+
+ card(`${who("SERVICE · WITH A PERSON")}<h4>“This arrived broken”</h4><p>Amina from the desk is on it. Replacement approved 09:41, courier rebooked.</p><div class="meta">Human escalation is always one verb away.</div>`);}
+function chips(){$("verbChips").innerHTML=VERBS.map(v=>`<button data-v="${v}">${v}</button>`).join("");document.querySelectorAll("[data-v]").forEach(b=>b.onclick=()=>say(b.dataset.v));}
+function bloom(html,held){const d=document.createElement("div");d.innerHTML=card(html,held?"held bloom":"bloom");$("feed").prepend(d.firstChild);}
+function say(text){
+ const t=(text||$("verb").value||"").trim(); if(!t)return; $("verb").value="";
+ const low=t.toLowerCase();
+ if(low.includes("español")||low.includes("espanol")) bloom(`${who("NIA · CONCIERGE")}<h4>¡Claro! Hablamos español.</h4><p>Puedo revisar stock, seguir tu pedido o reservarte una consulta de fragancias. ¿Por dónde empezamos?</p>`);
+ else if(low.includes("track")) bloom(`${who("NIA · CONCIERGE")}<h4>Order #2841 — out for delivery</h4><p>Left Uhuru Highway 08:12, rider is 20 minutes away. I will message you when it lands.</p><div class="meta">Checked just now against the live order, not the page copy.</div>`);
+ else if(low.includes("book")||low.includes("friday")) bloom(`${who("NIA · CONCIERGE")}<h4>Friday, two people, somewhere quiet?</h4><p>I can hold the garden table at 19:00 for a scent consultation. Shall I hold it? Nothing is charged today.</p><div class="verbs"><button onclick="this.closest('.card').querySelector('p').textContent='Held: Friday 19:00, garden table, two people. A person confirms by SMS within the hour.'">Hold Friday 19:00</button></div>`,false);
+ else if(low.includes("mombasa")||low.includes("ship")) bloom(`${who("NIA · CONCIERGE")}<h4>Yes — Mombasa in 2 days</h4><p>KSh 350, free over KSh 8,000. From our delivery guide, cited so you can check me.</p>`);
+ else if(low.includes("person")||low.includes("human")) bloom(`${who("SERVICE · ESCALATION")}<h4>Bringing in Amina from the desk</h4><p>She has this whole conversation. Average first reply: 12 minutes in opening hours.</p>`);
+ else bloom(`${who("NIA · CONCIERGE")}<h4>Let me get that exactly right</h4><p>“${t.replace(/</g,"&lt;")}” — checking the shop, the guides, and today's stock before I answer.</p>`);}
+$("say").onclick=()=>say(); $("verb").addEventListener("keydown",e=>{if(e.key==="Enter")say()});
+function scrubRender(){const v=Number($("scrub").value);const times=["00:00","01:00","02:00","03:00","04:00","05:30","07:00"];$("clock").textContent=v>=6?"07:00 · Night Report ready":times[v]+" · night in progress";$("nightlog").textContent=NIGHT.slice(0,v+1).join("\n")||"The night is young. The Watchman is awake so you do not have to be.";}
+$("scrub").addEventListener("input",scrubRender);
+function renderAgents(){$("agents").innerHTML=AGENTS.map(a=>card(`${who(a.n.toUpperCase())}<h4>${a.n}</h4><p>${a.d}</p><div class="meta">Authority: ${a.s}</div>`)).join("");}
+function renderAgentView(){$("manifest").textContent=`GET /.well-known/awp.json
+{ "site": "classyperfumes.co.ke", "profile": "static+edge",
+  "capabilities": ["search_site","get_quote","place_order",
+                   "book","order_status"],
+  "tiers": ["public","known","verified","partner"],
+  "trust": "credentials only — never user-agent" }`;
+ $("digestBox").textContent=`Human World release ....... seq 118 · sha256:9f2c…e41a
+Machine twin (index.awp.json) sha256:9f2c…e41a  MATCH
+SiteLog checkpoint ......... signed · extends seq 117
+LaunchGate ................. passed (claims, links, twins)`;}
+$("buyAgent").onclick=()=>{$("agentFeed").innerHTML=card(`${who("PARTNER AGENT · AWP")}<h4>Order placed — payment held</h4><p>Verified partner ordered 12× Amber Noir. Consent receipt issued; payment is a Held Call (202). The owner approves; the call completes. No scraping, no fake checkout.</p>`,"held");};
+function view(which){for(const [id,btn] of [["Human","vHuman"],["Owner","vOwner"],["Agent","vAgent"]]){$( "world"+id).hidden=id!==which;$(btn).classList.toggle("on",id===which);}if(which==="Owner")scrubRender();}
+$("vHuman").onclick=()=>view("Human");$("vOwner").onclick=()=>view("Owner");$("vAgent").onclick=()=>view("Agent");
+$("birth").onclick=()=>{
+ view("Human"); $("feed").innerHTML="";
+ const steps=[
+  `${who("MIGRATION · NO LOGIN ASKED")}<h4>Reading the public site…</h4><p>Pages, products, and the owner's voice — from what the world can already see.</p>`,
+  `${who("LAUNCH GATE")}<h4>Claims checked</h4><p>Verified: prices, hours, delivery areas. Held for the owner: “clinically proven”, two testimonials.</p>`,
+  `${who("WORLD BORN")}<h4>A Website 4.0 crystallizes</h4><p>Storefront, Story, Service — staffed, twin-signed, and calm at rest. Welcome to the agentic era.</p>`];
+ steps.forEach((s,i)=>setTimeout(()=>bloom(s,i===1),i*900));
+};
+renderShop(); renderSide(); chips(); renderAgents(); renderAgentView(); scrubRender();
+</script>
+</body>
+</html>

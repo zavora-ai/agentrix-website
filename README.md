@@ -12,6 +12,16 @@ a business's public presence.
 > **4.0 works**: a website that greets, sells, publishes, supports, and
 > defends itself — with the owner approving anything that matters.
 
+## See it
+
+Open [`concept/index.html`](concept/index.html) in a browser (any static
+server works, e.g. `python3 -m http.server --directory concept`): a
+Classy Perfumes Website 4.0 with the Visitor World, verb bar, Owner's
+Back-Office with a scrubbable night, and the Agent View — simulated
+in-page and labeled as such.
+
+![Visitor World](concept/01-visitor-world.png)
+
 ## Start here
 
 | Document | What it settles |
