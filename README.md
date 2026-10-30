@@ -39,6 +39,14 @@ hooks/triggers, Q&A, watch and buy). UX polish: keyboard verbs (`/` to ask,
 
 ![Center stage](concept/07-v3-center-stage.png)
 
+**Concept 4** — [`concept/v4.html`](concept/v4.html): the spatial field in
+3D. Product cards lean in 3D toward the pointer, and center stage holds a
+real-time three.js perfume bottle (lathe-turned glass, canvas label, studio
+environment) you can drag to rotate — per-product colours, with the photo
+as fallback.
+
+![3D center stage](concept/08-v4-3d-stage.png)
+
 ## Start here
 
 | Document | What it settles |
