@@ -1,0 +1,27 @@
+{
+  "name": "agentrix-website-day2-video",
+  "version": "1.0.0",
+  "private": true,
+  "license": "UNLICENSED",
+  "dependencies": {
+    "@remotion/captions": "4.0.532",
+    "@remotion/cli": "4.0.532",
+    "@remotion/media": "4.0.532",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "remotion": "4.0.532"
+  },
+  "devDependencies": {
+    "@types/react": "19.2.7",
+    "@types/react-dom": "19.2.7",
+    "typescript": "5.9.3"
+  },
+  "scripts": {
+    "dev": "remotion studio",
+    "render": "remotion render Day2Showcase out/day2-showcase.mp4",
+    "stills": "remotion still Day2Showcase out/frame.png --frame=90"
+  },
+  "allowScripts": {
+    "esbuild@0.28.1": true
+  }
+}

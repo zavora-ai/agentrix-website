@@ -4,3 +4,5 @@ target/
 .svelte-kit/
 node_modules/
 dist/
+video/node_modules/
+video/out/*.png
