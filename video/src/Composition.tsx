@@ -80,6 +80,25 @@ const StatsCarousel: React.FC = () => {
   );
 };
 
+const Checklist: React.FC = () => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const items = ["Generate leads", "Convert visitors", "Provide support", "Remarket", "Give owner updates", "Manage its own costs", "Manage inventory"];
+  const shown = Math.min(items.length, Math.floor(frame / (0.62 * fps)) + 1);
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 15, padding: "40px 44px", height: "100%", justifyContent: "center" }}>
+      {items.map((s, i) => (
+        <div key={s} style={{ display: "flex", alignItems: "center", gap: 16, fontSize: 29, fontWeight: 700, opacity: i < shown ? fade(frame, i * 0.62 * fps, 10) : 0.18 }}>
+          <span style={{ color: MUTED, fontWeight: 800, width: 34 }}>{i + 1}.</span>
+          <span style={{ flex: 1 }}>{s}</span>
+          <span style={{ color: "#15803d", fontSize: 32, fontWeight: 900, opacity: i < shown ? 1 : 0 }}>✓</span>
+        </div>
+      ))}
+      <div style={{ marginTop: 12, fontSize: 23, color: MUTED, borderTop: "1.5px solid #e6e2f2", paddingTop: 16, opacity: fade(frame, items.length * 0.62 * fps, 14) }}>Owner approves actions when prompted — autonomy inside authority.</div>
+    </div>
+  );
+};
+
 const Img: React.FC<{ src: string }> = ({ src }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
@@ -165,7 +184,7 @@ export const SCENES: Scene[] = [
     title: "Your website is now fully autonomous.",
     caption: "It generates leads, converts visitors, supports customers, remarkets to the ones who left, updates the owner every morning, and manages its own costs and stock. The owner sets the goals and approves anything risky.",
     seconds: 12,
-    visual: <Chips items={["Generate leads", "Convert visitors", "Support customers", "Remarket", "Owner updates daily", "Manage costs", "Manage inventory", "Owner approves risk"]} />,
+    visual: <Checklist />,
   },
   {
     label: "CONCEPT 5 · THE AGENT INTERFACE",
@@ -208,7 +227,7 @@ export const SCENES: Scene[] = [
         <div style={{ fontSize: 30 }}><b style={{ color: ORANGE }}>$100</b> — foundation · research · concepts · design · plan ✓</div>
         <div style={{ height: 16, borderRadius: 8, background: "#2a2a44", overflow: "hidden" }}><div style={{ width: "66%", height: "100%", background: ORANGE }} /></div>
         <div style={{ fontSize: 30 }}><b style={{ color: ORANGE }}>$50</b> — implementation · Day 3 · coding in public</div>
-        <div style={{ fontSize: 34, fontWeight: 800, color: "#fff", border: `2px solid ${ORANGE}`, borderRadius: 14, padding: "14px 20px", textAlign: "center" }}>Day 3 · live coding → github.com/jkmaina/agentrix-website</div>
+        <div style={{ fontSize: 34, fontWeight: 800, color: "#fff", border: `2px solid ${ORANGE}`, borderRadius: 14, padding: "14px 20px", textAlign: "center" }}>Day 3 · live coding → github.com/zavora-ai/agentrix-website</div>
         <div style={{ fontSize: 24, color: "#c9c6e8" }}>Public repo · Apache 2.0 · What should Day 3 build first — migration, the concierge, or the night shift? Comment below.</div>
       </div>
     ),
@@ -238,7 +257,7 @@ const CaptionBar: React.FC<{ scene: Scene; dark?: boolean }> = ({ scene, dark })
   const page = pages.find((pg) => nowMs >= pg.startMs && nowMs < pg.startMs + 2900) ?? pages[pages.length - 1];
   if (!page) return null;
   return (
-    <div style={{ position: "absolute", left: 90, bottom: 92, width: 680, pointerEvents: "none" }}>
+    <div style={{ position: "absolute", left: 90, top: "54%", width: 680, pointerEvents: "none" }}>
       <div style={{ fontSize: 27, fontWeight: 650, lineHeight: 1.4, whiteSpace: "pre-wrap", color: dark ? "#fff" : INK }}><span style={{ fontSize: 15, fontWeight: 800, letterSpacing: 2, color: ORANGE, display: "block", marginBottom: 6 }}>● LIVE CAPTION</span>
         {page.tokens.map((tok) => (
           <span key={tok.fromMs} style={{ color: tok.fromMs <= nowMs && tok.toMs > nowMs ? ORANGE : undefined }}>{tok.text}</span>
@@ -257,7 +276,7 @@ const SceneView: React.FC<{ scene: Scene; index: number }> = ({ scene, index }) 
       <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 64, display: "flex", alignItems: "center", gap: 14, padding: "0 90px", borderBottom: dark ? "1px solid #24365c" : "1px solid #e9e6f5", background: dark ? "rgba(10,22,40,.92)" : "rgba(255,255,255,.92)" }}>
         <span style={{ width: 12, height: 12, borderRadius: "50%", background: ORANGE }} />
         <span style={{ fontSize: 21, fontWeight: 800, letterSpacing: 2.2 }}>DAY 2 — AGENTRIX WEBSITE</span>
-        <span style={{ marginLeft: "auto", fontSize: 16, fontWeight: 650, color: dark ? "#93a5c4" : MUTED }}>Website 4.0 · Building in public</span>
+        <span style={{ fontSize: 16, fontWeight: 650, color: ORANGE }}>github.com/zavora-ai/agentrix-website</span><span style={{ marginLeft: "auto", fontSize: 16, fontWeight: 650, color: dark ? "#93a5c4" : MUTED }}>Website 4.0 · Building in public</span>
       </div>
       <div style={{ position: "absolute", left: 90, top: 132, width: 700, opacity: fade(frame, 2), translate: `0 ${rise(frame, 2)}px` }}>
         <div style={{ fontSize: 21, fontWeight: 700, letterSpacing: 2.5, color: ORANGE }}>
