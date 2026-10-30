@@ -1,40 +1,10 @@
-# Agentrix Website — Implementation Plan
+# Agentrix Website — Execution Record
 
-Status: Phase 0 in progress. This is the execution record for the plan
-approved 2026-10-30. Each phase closes with its named validation and a
-commit.
-
-## Spec
-
-**Goals.** G1 Governed autonomous site: 7 charter jobs
-(Probe/Watch/Content/Reviews/Outreach/Support/Digest) wake on
-schedule/signal under the autonomy ladder and KPI guardrails. G2
-Dual-audience serving (humans + AWP agents, same signed release). G3
-Owner control: one inbox, budgets (USD/tokens/media), quiet hours,
-freeze, rollback, weekly Digest. G4 Credential-free migration with
-parity gate. G5 Multi-site tenant isolation.
-
-**Non-goals (v1).** Spatial/3D serving (concepts stay demo surfaces);
-live ad spend and paid social (Mastodon live, ads recorded/labeled);
-JS/SPA generation; hand-rolled fleet autoscaler.
-
-**SLOs.** Probe wake→run ≤60s p95, model-free · Concierge first token
-≤2s p95 · zero cross-site retrieval/approval leaks · cost reserved
-before calls · held approvals survive restart · migration parity ≥0.95.
-
-## Design decisions
-
-- **Tenancy**: one TenantKernel per site (`adk-kernel` managed feature);
-  per-site durable stores; fleet view is a product aggregator in v1.
-- **Hosting**: features `charter, channels, managed, proc` + Muse;
-  explicit durable stores; startup fails loudly if any store is
-  InMemory or any charter job is absent.
-- **Executors are product work**: kernel starts governed runs; Zavora
-  writes the Runner targets, KPI sources, signal emitters, inbox UX.
-- **Extension before forking**: `WakeSource` trait, `Wake::Signal`
-  free-form kinds, `Guardrail` impls, `Document.metadata` citations and
-  visitor-UUID principals ship as product code; only the narrow gaps
-  below go upstream.
+Status: Phase 0 done. The normative spec is
+[`.kiro/specs/agentrix-website/](../.kiro/specs/agentrix-website/)
+(requirements, design, tasks); this file records execution: findings, upstream
+issues, phase gates and risks. Each phase closes with its named validation and
+a commit.
 
 ## Phase 0 findings (verified 2026-10-30)
 
@@ -54,19 +24,19 @@ RAG citation propagation, durable harness approvals/drafts, sandbox
 egress enforcement, Muse realtime/streaming clients, visitor
 principal + cross-store erasure.
 
-## Phases and validation
+## Phase gates
 
-| Phase | Ships | Closes with |
+| Phase | Gate | Result |
 |---|---|---|
-| 0 Foundation | This plan, issues, host self-check | Findings table above; restart durability proof |
-| 1 Read-only dual site | Generator site + twins + AWP edge | Digest match human vs twin |
-| 2 Draft-first content | Held drafts + unified inbox | Approval survives restart |
-| 3 Publish + rollback | Signed releases via LaunchGate | Rollback to prior digest |
-| 4 Concierge + signals | Visitor principal, grounded answers | Zero cross-site chunks |
-| 5 Email + support | Live mail, held replies | Tier-above send impossible unapproved |
-| 6 Campaigns + social | Outreach, Mastodon, KPI digest | Cap halts spend; breach demotes |
-| 7 Commerce | Held payments via AWP | 202 → approve → complete, idempotent |
-| 8 Self-defense + costs | Log/KPI/stock wakes, reversible acts | Incident card + rollback drill |
+| 0 Foundation | Findings reproduce; `cargo test -p agentrix-site-host` green twice | Pass (`bf4a369`) |
+| 1 Read-only dual site | Digest match human vs twin | — |
+| 2 Draft-first content | Approval survives restart | — |
+| 3 Publish + rollback | Rollback to prior digest | — |
+| 4 Concierge + signals | Zero cross-site chunks | — |
+| 5 Email + support | Tier-above send impossible unapproved | — |
+| 6 Campaigns + social | Cap halts spend; breach demotes | — |
+| 7 Commerce | 202 → approve → complete, idempotent | — |
+| 8 Self-defense + costs | Incident card + rollback drill | — |
 
 ## Risks carried as gaps
 
