@@ -22,6 +22,15 @@ in-page and labeled as such.
 
 ![Visitor World](concept/01-visitor-world.png)
 
+**Concept 2** — [`concept/v2.html`](concept/v2.html): everything is an
+agent on familiar Amazon bones (Display Agent re-ranks by intent, each
+product is a live sub-agent with hooks, News/Live/Newsletter/Proactive
+agents on the rails), plus the **Agent CLI** — a public harness-terminal
+interface where one site agent serves thousands of connected agents.
+
+![Agentic Amazon](concept/04-concept2-amazon.png)
+![Agent CLI](concept/05-concept2-cli.png)
+
 ## Start here
 
 | Document | What it settles |

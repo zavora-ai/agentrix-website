@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Agentrix Website 4.0 — Concept 2: Everything is an agent</title>
+<style>
+:root{--ink:#0f172a;--t2:#475569;--label:#64748b;--line:#e6e8ec;--brand:#f74c00;--accent:#c03a00;--ok:#15803d;--info:#1d4ed8;--wait:#b3360a;--sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;--serif:Charter,Georgia,serif}
+*{box-sizing:border-box}body{margin:0;font:15px/1.5 var(--sans);color:var(--ink);background:#eaeded}
+button{font:600 13px var(--sans);cursor:pointer;border:1px solid var(--line);background:#fff;border-radius:9px;padding:8px 12px;min-height:36px}
+button.primary{background:#ffd814;border-color:#fcd200;color:#0f1111}
+button.orange{background:var(--accent);border-color:transparent;color:#fff}
+button.on{background:#0f172a;color:#fff}
+/* amazon-trust header */
+.aznav{background:#131921;color:#fff;display:flex;gap:16px;align-items:center;padding:10px 18px;flex-wrap:wrap}
+.aznav .logo{font:800 21px var(--sans);letter-spacing:-.02em}.aznav .logo span{color:var(--brand)}
+.aznav .deliver{font-size:12px;color:#ccc}.aznav .deliver b{color:#fff;font-size:13px}
+.search{flex:1;display:flex;min-width:240px}.search input{flex:1;border:0;padding:11px 12px;font:15px var(--sans);border-radius:9px 0 0 9px;min-width:0}.search button{border-radius:0 9px 9px 0;border:0;background:#febd69;font-weight:700;padding:0 20px}
+.aznav .acct{font-size:12px;color:#ccc;text-align:right}.aznav .acct b{color:#fff;display:block;font-size:13px}
+.azsub{background:#232f3e;color:#fff;display:flex;gap:18px;padding:7px 18px;font-size:13px;flex-wrap:wrap;align-items:center}
+.azsub .live{margin-left:auto;color:#ffd814;font-weight:700}
+.ticker{background:#fef3c7;color:#92400e;padding:7px 18px;font-size:13px;display:flex;gap:10px;align-items:center}
+.ticker b{font-size:11px;letter-spacing:.05em}
+.wrap{max-width:1180px;margin:0 auto;padding:16px 18px 40px}
+.conceptbar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;align-items:center}
+.conceptbar .hint{color:var(--t2);font-size:13px}
+.layout{display:grid;grid-template-columns:190px 1fr 250px;gap:16px;align-items:start}
+@media(max-width:950px){.layout{grid-template-columns:1fr}}
+.rail h3,.railr h3{font:700 11px var(--sans);letter-spacing:.07em;text-transform:uppercase;color:var(--label);margin:0 0 8px}
+.agentrow{display:flex;gap:8px;align-items:center;background:#fff;border:1px solid var(--line);border-radius:11px;padding:8px 10px;margin-bottom:8px;font-size:13px}
+.agentrow i{width:9px;height:9px;border-radius:50%;background:#cbd5e1;flex:none}
+.agentrow.live i{background:var(--ok);box-shadow:0 0 0 4px #dcfce7}
+.agentrow small{display:block;color:var(--label);font-size:11.5px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(225px,1fr));gap:14px}
+.pcard{background:#fff;border:1px solid var(--line);border-radius:12px;padding:14px;position:relative}
+.pcard .thumb{height:130px;border-radius:9px;display:flex;align-items:center;justify-content:center;font:800 30px var(--serif);color:#fff;margin-bottom:10px}
+.pcard h4{margin:0 0 3px;font-size:16px}.pcard p{margin:0 0 7px;color:var(--t2);font-size:13.5px}
+.price{font:800 20px var(--sans)}.stars{color:#de7921;font-size:13px}
+.badge{display:inline-block;font:700 11px var(--sans);border-radius:999px;padding:2px 8px;background:#f0fdf4;color:#15803d;border:1px solid #bbf7d0}
+.badge.wait{background:#fff7ed;color:var(--wait);border-color:#fed7aa}
+.hooks{display:flex;gap:6px;flex-wrap:wrap;margin-top:9px}.hooks button{font-size:12px;min-height:32px;padding:5px 9px;border-radius:999px}
+.livebanner{background:#131921;color:#fff;border-radius:12px;padding:14px 16px;display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-bottom:14px}
+.livebanner .dotlive{width:10px;height:10px;border-radius:50%;background:#ef4444;animation:pl 1.2s infinite}
+@keyframes pl{50%{opacity:.35}}
+.fieldcard{background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:10px;font-size:13.5px}
+.fieldcard.held{border-color:var(--wait);background:#fff7ed}
+.fieldcard h5{margin:0 0 3px;font-size:14px}.fieldcard p{margin:0;color:var(--t2)}
+.bloom{animation:bl .35s ease}@keyframes bl{from{opacity:0;transform:translateY(7px)}to{opacity:1;transform:none}}
+/* agent cli */
+.termwrap{display:grid;grid-template-columns:1.35fr 1fr;gap:16px;align-items:start}@media(max-width:950px){.termwrap{grid-template-columns:1fr}}
+.term{background:#0a1628;color:#dbeafe;border-radius:14px;padding:16px;font:13px/1.65 ui-monospace,Menlo,monospace;height:560px;overflow:auto;white-space:pre-wrap}
+.term .p{color:#7dd3fc}.term .ok{color:#4ade80}.term .wait{color:#fbbf24}.term .dim{color:#7d8aa5}
+.termbar{display:flex;gap:6px;flex-wrap:wrap;margin:10px 0}
+.statgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.stat{background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px}.stat b{display:block;font-size:24px}.stat span{font-size:11.5px;color:var(--label);text-transform:uppercase;letter-spacing:.04em}
+.split{display:grid;grid-template-columns:1fr 1fr;gap:16px}@media(max-width:950px){.split{grid-template-columns:1fr}}
+.note{font-size:12.5px;color:var(--t2);margin-top:8px}
+footer{max-width:1180px;margin:0 auto;padding:0 18px 40px;color:var(--label);font-size:13px}
+[hidden]{display:none!important}
+@media (prefers-reduced-motion:reduce){.bloom,.livebanner .dotlive{animation:none}}
+</style></head><body>
+
+<div class="aznav">
+  <div class="logo">classy<span>.</span>perfumes</div>
+  <div class="deliver">Deliver to<br><b>Nairobi — Westlands</b></div>
+  <div class="search"><input id="intent" placeholder="Try a verb, not a keyword: “gift under KSh 5,000 for mum who likes vanilla”"><button id="askBtn">Ask the shop</button></div>
+  <div class="acct">Hello, Wanjiku<b>Orders &amp; Lists</b></div>
+  <div class="acct">Watchlist<b id="cartcount">2 agents watching</b></div>
+</div>
+<div class="azsub"><span>All</span><span>Perfumes</span><span>Gift sets</span><span>Home scents</span><span>Consultations</span><span>Sell on Classy</span><span class="live">● LIVE at 19:00 — “Finding your signature scent” with Nia</span></div>
+<div class="ticker"><b>NEWS AGENT</b><span id="ticker">Long rains are coming: amber and oud searches up 34% this week in Nairobi. The Editor's rainy-season guide is live — and the Marketer's campaign is held for the owner.</span></div>
+
+<div class="wrap">
+  <div class="conceptbar">
+    <button id="tHuman" class="on">Concept 1 · Agentic Amazon (for humans)</button>
+    <button id="tCli">Concept 2 · Agent CLI (for agents)</button>
+    <button id="tSplit">Same moment, both audiences</button>
+    <span class="hint">Everything on this page is an agent — the display, the newsletter, each product. Familiar Amazon bones; agentic muscle.</span>
+  </div>
+
+  <!-- CONCEPT 1 -->
+  <section id="cHuman">
+    <div class="livebanner"><span class="dotlive"></span><div><b>LIVE EVENT AGENT — 19:00 tonight</b><div style="color:#cbd5e1;font-size:13px">Nia hosts “Finding your signature scent” live. She answers in your language, holds seats, and follows up only if you ask.</div></div><button class="primary" id="joinLive" style="margin-left:auto">Hold my seat</button></div>
+    <div class="layout">
+      <aside class="rail"><h3>Agents on this page</h3><div id="rail"></div>
+        <div class="fieldcard"><b>Newsletter Agent</b><p>“The Rainy Season Edit” — written in the owner's voice, sent only to people who asked. <button class="small" id="nlBtn" style="margin-top:6px">Ask it why this week</button></p></div>
+      </aside>
+      <div><div class="grid" id="grid"></div></div>
+      <aside class="railr"><h3>The field — work as it happens</h3><div id="field"></div></aside>
+    </div>
+  </section>
+
+  <!-- CONCEPT 2 -->
+  <section id="cCli" hidden>
+    <div class="termwrap">
+      <div>
+        <div class="term" id="term"></div>
+        <div class="termbar" id="chips"></div>
+        <div style="display:flex;gap:8px"><input id="cmd" placeholder="Type like an agent: capabilities · search amber · quote amber-noir x12 · order …" style="flex:1;padding:11px;border-radius:10px;border:1px solid var(--line);font:14px ui-monospace,Menlo,monospace"><button class="orange" id="runCmd">Run</button></div>
+        <p class="note">The CLI <i>is</i> the interface for agents — the harness terminal pattern, public. Slash-commands mirror the owner's TUI; every call is governed, idempotent, and held when it must be.</p>
+      </div>
+      <div>
+        <div class="statgrid">
+          <div class="stat"><b id="sAgents">0</b><span>Agents connected now</span></div>
+          <div class="stat"><b id="sHeld">0</b><span>Held calls awaiting owners</span></div>
+          <div class="stat"><b id="sCalls">0</b><span>Capability calls / min</span></div>
+          <div class="stat"><b id="sTier">public</b><span>Your trust tier</span></div>
+        </div>
+        <div style="height:12px"></div>
+        <div class="fieldcard"><h5>One agent, thousands served</h5><p id="scaleNote">A single site agent (Nia's back-office twin) serves every connected agent through the kernel queue: interactive calls in ~500ms, background jobs parked for free until their wake. Watch the counters — no human page was loaded for any of them.</p></div>
+        <div id="scaleFeed"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SPLIT -->
+  <section id="cSplit" hidden>
+    <div class="split">
+      <div><h3 style="margin-top:0">Human buys (Concept 1)</h3><div id="splitHuman"></div></div>
+      <div><h3 style="margin-top:0">Machines settle (Concept 2)</h3><div class="term" id="splitTerm" style="height:340px"></div></div>
+    </div>
+    <p class="note">Same order, same release digest, two audiences. The human never sees the CLI; the agent never scrapes the page.</p>
+  </section>
+</div>
+<footer>Agentrix Website 4.0 · Concept 2 — simulated in-page and labeled as such. Underneath: adk-kernel queues, adk-harness holds, Muse reasoning, AWP contracts.</footer>
+<script>
+const $=id=>document.getElementById(id);
+const PRODUCTS=[
+ {id:"amber-noir",n:"Amber Noir — 50ml",p:"Warm amber, smoked vanilla, whisper of oud.",price:6400,was:7200,stars:"★★★★★ 212",c:"#7c2d12",g:"A",stock:14},
+ {id:"citrus-dawn",n:"Citrus Dawn — 50ml",p:"Bergamot and neroli over clean musk.",price:4900,was:4900,stars:"★★★★☆ 98",c:"#0e7490",g:"C",stock:3},
+ {id:"rain-oud",n:"Rain Oud — 30ml",p:"Petrichor and oud. The long-rains limited run.",price:5800,was:6500,stars:"★★★★★ 167",c:"#1e3a5f",g:"R",stock:22},
+ {id:"vanilla-gift",n:"Vanilla Gift Set",p:"Vanilla candle + 30ml spray, gift-wrapped.",price:4500,was:5200,stars:"★★★★★ 301",c:"#9a3412",g:"V",stock:9}];
+const AGENTS=[["Display Agent","re-ranks the shelf by intent",1],["Concierge · Nia","greets, answers, books",1],["Product Agents ×4","stock, price-watch, Q&A",1],["News Agent","ticker + rainy-season watch",1],["Live Event Agent","tonight 19:00, holds seats",0],["Newsletter Agent","owner-voice, opt-in only",0],["Proactive Agent","notices, never nags",0],["Watchman","blocks bursts, holds claims",1]];
+let watching=2;
+function fmt(n){return "KSh "+n.toLocaleString()}
+function renderRail(){$("rail").innerHTML=AGENTS.map(a=>`<div class="agentrow ${a[2]?"live":""}"><i></i><div>${a[0]}<small>${a[1]}</small></div></div>`).join("")}
+function field(html,held){const d=document.createElement("div");d.innerHTML=`<div class="fieldcard ${held?"held":""} bloom"><h5>${html[0]}</h5><p>${html[1]}</p></div>`;$("field").prepend(d.firstChild)}
+function renderGrid(list){$("grid").innerHTML=(list||PRODUCTS).map(p=>`
+ <article class="pcard"><div class="thumb" style="background:${p.c}">${p.g}</div>
+ <span class="badge">PRODUCT AGENT · LIVE</span> ${p.stock<=3?'<span class="badge wait">ONLY '+p.stock+' LEFT</span>':""}
+ <h4>${p.n}</h4><p>${p.p}</p><div class="stars">${p.stars}</div>
+ <div class="price">${fmt(p.price)}</div><div style="color:#b12704;font-size:13px">${p.was>p.price?"Was "+fmt(p.was)+" · agent-negotiated":""}</div>
+ <div style="color:#067d62;font-size:13px">In stock: ${p.stock} · checked just now by its agent</div>
+ <div class="hooks">
+   <button data-ask="${p.id}">Ask this product</button>
+   <button data-watch="${p.id}">Watch price</button>
+   <button data-buy="${p.id}" class="primary">Buy — its agent confirms</button>
+ </div></article>`).join("");
+ document.querySelectorAll("[data-ask]").forEach(b=>b.onclick=()=>{const p=PRODUCTS.find(x=>x.id===b.dataset.ask);field([p.n+" · Product Agent",`“I last 6–8 hours on skin, longer on fabric. ${p.stock} of me at Uhuru Highway. Want me gift-wrapped?” — answered from its own test data, not the listing.`])});
+ document.querySelectorAll("[data-watch]").forEach(b=>b.onclick=()=>{watching++;$("cartcount").textContent=watching+" agents watching";field(["Price-Watch Agent armed","Watching for you. It speaks only on a real drop — silence is the default."])});
+ document.querySelectorAll("[data-buy]").forEach(b=>b.onclick=()=>buy(b.dataset.buy,"human"));}
+function buy(id,who){const p=PRODUCTS.find(x=>x.id===id);p.stock=Math.max(0,p.stock-1);renderGrid();
+ field([p.n+" · Product Agent","Order confirmed by its agent, stock updated everywhere at once — page, twins, and the CLI below."]);
+ logSplit(p)}
+function intentSearch(){const q=$("intent").value.toLowerCase();let list=PRODUCTS;
+ if(q.includes("vanilla")||q.includes("mum")||q.includes("gift")) list=[...PRODUCTS].sort((a,b)=>(b.id==="vanilla-gift")-(a.id==="vanilla-gift"));
+ if(q.includes("5000")||q.includes("under")) list=list.filter(p=>p.price<=5000);
+ renderGrid(list);
+ field(["Display Agent re-ranked the shelf",`Heard: “${$("intent").value||"just browsing"}”. Every card moved for a reason it can state — no silent manipulation.`]);}
+$("askBtn").onclick=intentSearch;$("intent").addEventListener("keydown",e=>{if(e.key==="Enter")intentSearch()});
+$("joinLive").onclick=()=>field(["Live Event Agent","Seat held for tonight 19:00. Nia will open in your language and hold questions for the end."]);
+$("nlBtn").onclick=()=>field(["Newsletter Agent","“Why this week: the rains change how amber wears. I only write when the owner approves the draft — this one passed at 06:58.”"]);
+setTimeout(()=>field(["Proactive Agent","Noticed (once, quietly): Rain Oud is back and you watched its price last week. Say the word and its agent holds one."]),7000);
+
+/* ---- Concept 2: Agent CLI ---- */
+let T=[];const push=(s,c)=>{T.push(`<span class="${c||""}">${s}</span>`);$("term").innerHTML=T.join("\n");$("term").scrollTop=1e6};
+const BOOT=[["$ awp connect classyperfumes.co.ke","p"],["  verified via WebBotAuth · tier: verified · release seq 118 · digest 9f2c…e41a","ok"],["$ capabilities","p"],["  search_site  get_quote  place_order  book  order_status",""],["  (payment + publish are held capabilities on this site)","dim"],["$ search amber --limit 2","p"],["  amber-noir  KSh 6,400  stock 14  agent-live","ok"],["  rain-oud    KSh 5,800  stock 22  agent-live","ok"]];
+let booted=false;
+const CMDS=[["capabilities","search_site · get_quote · place_order · book · order_status — tier verified sees 5; public sees 2.","ok"],["search","amber-noir KSh 6,400 stock 14 · rain-oud KSh 5,800 stock 22 — served by Product Agents, no page rendered.","ok"],["quote","Quote Q-881: 12 × Amber Noir = KSh 76,800, signed at release prices (A-I25). Valid 15 min.","ok"],["order","Order placed. Payment is a HELD CALL (202) — the owner approves in their inbox; you poll /calls/{id}. Idempotency-Key accepted, replay safe.","wait"],["status","Order #2841 out for delivery · digest matches human release seq 118.","ok"],["book","Held: Friday 19:00 consultation, two people. Human confirms by SMS; you get the webhook.","wait"]];
+function runCmd(raw){const t=(raw||$("cmd").value||"").trim();if(!t)return;$("cmd").value="";push("$ "+t,"p");
+ const hit=CMDS.find(c=>t.toLowerCase().startsWith(c[0])); if(hit) push("  "+hit[1],hit[2]);
+ else push("  unknown verb. Try: capabilities · search · quote · order · status · book. The CLI is the interface — verbs are the contract.","wait");}
+$("runCmd").onclick=()=>runCmd();$("cmd").addEventListener("keydown",e=>{if(e.key==="Enter")runCmd()});
+$("chips").innerHTML=CMDS.map(c=>`<button data-c="${c[0]}">${c[0]}</button>`).join("");document.querySelectorAll("[data-c]").forEach(b=>b.onclick=()=>runCmd(b.dataset.c));
+let agents=1840,calls=0,held=7;
+function tick(){agents+=Math.round(Math.random()*36-8);calls=2200+Math.round(Math.random()*500);$("sAgents").textContent=agents.toLocaleString();$("sCalls").textContent=calls.toLocaleString();$("sHeld").textContent=held;
+ if(Math.random()<.55){const evs=["partner agent · place_order · 202 HELD (payment)","agent · search_site · 41ms · queue interactive","agent · get_quote · signed · cache-hit twin","agent · order_status · digest verified","agent · book · held for human SMS"];const d=document.createElement("div");d.innerHTML=`<div class="fieldcard bloom"><p style="margin:0">${evs[Math.floor(Math.random()*evs.length)]}</p></div>`;$("scaleFeed").prepend(d.firstChild);while($("scaleFeed").children.length>4)$("scaleFeed").lastChild.remove();}}
+setInterval(tick,1600);
+/* split */
+function logSplit(p){const el=$("splitTerm");el.innerHTML+=`\n<span class="p">$ order ${p.id} --idempotency-key human-881</span>\n<span class="ok">  placed · stock ${p.stock} · digest seq 118 (same as human page)</span>`;el.scrollTop=1e6}
+$("splitHuman").innerHTML=PRODUCTS.slice(0,2).map(p=>`<article class="pcard"><div class="thumb" style="background:${p.c}">${p.g}</div><h4>${p.n}</h4><div class="price">${fmt(p.price)}</div><div class="hooks"><button class="primary" data-split="${p.id}">Buy — watch the machines settle it</button></div></article>`).join("");
+document.querySelectorAll("[data-split]").forEach(b=>b.onclick=()=>buy(b.dataset.split,"split"));
+$("splitTerm").innerHTML=`<span class="dim">Agent CLI — same site, same moment. Buy on the left; settlement appears here.</span>`;
+function view(w){for(const [id,btn] of [["Human","tHuman"],["Cli","tCli"],["Split","tSplit"]]){$("c"+id).hidden=id!==w;$(btn).classList.toggle("on",id===w)}if(w==="Cli"&&!booted){booted=true;BOOT.forEach((l,i)=>setTimeout(()=>push(l[0],l[1]),i*260));$("sTier").textContent="verified"}}
+$("tHuman").onclick=()=>view("Human");$("tCli").onclick=()=>view("Cli");$("tSplit").onclick=()=>view("Split");
+renderRail();renderGrid();field(["Concierge · Nia","Karibu. Say a verb in the search bar — the Display Agent will re-arrange the shop and tell you why."]);
+</script></body></html>
