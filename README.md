@@ -137,7 +137,7 @@ concierge, or the night shift? Open an issue or comment on the Day 2 post.
 | [docs/VISUAL_CONCEPT.md](docs/VISUAL_CONCEPT.md) | The complete visual vision |
 | [docs/STORYBOARD.md](docs/STORYBOARD.md) | The demo, beat by beat |
 | [docs/SUBSTRATE.md](docs/SUBSTRATE.md) | Vision → ADK-Rust, what exists vs what we build |
-| [docs/SLICES.md](docs/SLICES.md) | Build order that never compromises the end-state |
+| [docs/SLICES.md](docs/PLAN.md), [docs/SLICES.md](docs/SLICES.md) | Build order that never compromises the end-state |
 | [video/SCRIPT.md](video/SCRIPT.md) | Day 2 script and stat sources |
 
 Honesty discipline, inherited from Agentrix OS: nothing is fabricated to
