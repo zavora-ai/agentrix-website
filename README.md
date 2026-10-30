@@ -31,6 +31,14 @@ interface where one site agent serves thousands of connected agents.
 ![Agentic Amazon](concept/04-concept2-amazon.png)
 ![Agent CLI](concept/05-concept2-cli.png)
 
+**Concept 3** — [`concept/v3.html`](concept/v3.html): Concept 2 with real
+generated product photography, the Agentrix spatial field, and center-stage
+focus (click any product: the field recedes, its agent takes the center with
+hooks/triggers, Q&A, watch and buy). UX polish: keyboard verbs (`/` to ask,
+`Esc` to return), focus-visible states, reduced-motion support.
+
+![Center stage](concept/07-v3-center-stage.png)
+
 ## Start here
 
 | Document | What it settles |
