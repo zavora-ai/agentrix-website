@@ -10,3 +10,12 @@ one intent; completing twice charges once.
 ```sh
 cargo test -p agentrix-site-commerce   # the Phase 7 gate
 ```
+
+Live charges run through Stripe PaymentIntents (`STRIPE_SECRET_KEY` — test-mode
+for validation; the intent carries the `payment_method`). Micro-USD converts to
+minor units at charge time, refusing below one cent. The ignored live test
+creates a real test charge with `STRIPE_TEST_PM`:
+
+```sh
+cargo test -p agentrix-site-commerce -- --ignored
+```

@@ -83,6 +83,8 @@ pub struct NewPayment {
     pub payer_ref: String,
     /// Proposing twice under one key returns one intent.
     pub idempotency_key: String,
+    /// The provider's payment method, when the payer saved one.
+    pub payment_method: Option<String>,
 }
 
 /// One held payment: the intent, its card, and its charge record once done.
@@ -102,6 +104,8 @@ pub struct PaymentIntent {
     pub payer_ref: String,
     /// Proposing twice under one key returns one intent.
     pub idempotency_key: String,
+    /// The provider's payment method, when the payer saved one.
+    pub payment_method: Option<String>,
     /// Where it stands.
     pub state: IntentState,
     /// Its approval card.
@@ -177,6 +181,7 @@ impl Commerce {
                 purpose TEXT NOT NULL,
                 payer_ref TEXT NOT NULL,
                 idempotency_key TEXT NOT NULL UNIQUE,
+                payment_method TEXT,
                 state TEXT NOT NULL,
                 card_id TEXT NOT NULL,
                 charge_id TEXT
@@ -210,6 +215,7 @@ impl Commerce {
             purpose: payment.purpose.clone(),
             payer_ref: payment.payer_ref.clone(),
             idempotency_key: payment.idempotency_key.clone(),
+            payment_method: payment.payment_method.clone(),
             state: IntentState::Held,
             card_id: String::new(),
             charge_id: None,
@@ -230,8 +236,8 @@ impl Commerce {
         intent.card_id = card.id.clone();
         sqlx::query(
             "INSERT INTO intents
-             (id, site, amount_micro, currency, purpose, payer_ref, idempotency_key, state, card_id, charge_id)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)",
+             (id, site, amount_micro, currency, purpose, payer_ref, idempotency_key, payment_method, state, card_id, charge_id)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)",
         )
         .bind(&intent.id)
         .bind(&intent.site)
@@ -240,6 +246,7 @@ impl Commerce {
         .bind(&intent.purpose)
         .bind(&intent.payer_ref)
         .bind(&intent.idempotency_key)
+        .bind(&intent.payment_method)
         .bind(intent.state.as_str())
         .bind(&intent.card_id)
         .execute(&self.pool)
@@ -355,6 +362,7 @@ struct Row {
     purpose: String,
     payer_ref: String,
     idempotency_key: String,
+    payment_method: Option<String>,
     state: String,
     card_id: String,
     charge_id: Option<String>,
@@ -370,6 +378,7 @@ impl From<Row> for PaymentIntent {
             purpose: row.purpose,
             payer_ref: row.payer_ref,
             idempotency_key: row.idempotency_key,
+            payment_method: row.payment_method,
             state: IntentState::parse(&row.state),
             card_id: row.card_id,
             charge_id: row.charge_id,

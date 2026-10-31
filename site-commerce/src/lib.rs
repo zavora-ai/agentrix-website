@@ -7,8 +7,10 @@
 //! releases the fee and marks the intent failed. Proposing twice under one
 //! idempotency key returns one intent; completing twice charges once.
 
+pub mod live;
 pub mod payments;
 
+pub use live::StripeProvider;
 pub use payments::{
     Commerce, IntentState, LogProvider, NewPayment, PaymentError, PaymentIntent, PaymentProvider,
     Receipt,
