@@ -8,8 +8,10 @@
 //! is impossible: there is no third path, and the attempt files the send card it
 //! needs instead of sending.
 
+pub mod live;
 pub mod mail;
 
+pub use live::{ImapMailbox, SmtpSender, parse_rfc822};
 pub use mail::{
     DraftReply, FileMailbox, InboundMail, LogSender, Mailbox, Outbox, SendError, Sender, SentMail,
     Tier,

@@ -10,3 +10,12 @@ refused and files the send card it needs; nothing sends twice.
 ```sh
 cargo test -p agentrix-site-mail   # the Phase 5 gate
 ```
+
+Live mail: Gmail by default (`GMAIL_USER`, `GMAIL_APP_PASSWORD` — an app
+password, not the account password). `ImapMailbox` reads unseen INBOX mail over
+TLS; `SmtpSender` delivers over STARTTLS. Ignored live tests touch a real
+mailbox — `SMTP_TEST_TO` takes the probe mail:
+
+```sh
+cargo test -p agentrix-site-mail -- --ignored
+```

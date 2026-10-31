@@ -4,7 +4,9 @@
 use std::sync::Arc;
 
 use agentrix_site_inbox::{Card, CardState, CardStore, Decision, Execute};
-use agentrix_site_mail::{FileMailbox, LogSender, Outbox, SendError, Tier};
+use agentrix_site_mail::{
+    FileMailbox, ImapMailbox, LogSender, Outbox, SendError, SmtpSender, Tier, parse_rfc822,
+};
 
 struct AutoApprove;
 
@@ -131,4 +133,45 @@ async fn public_sends_directly() {
     // Its draft card stays open: sending is not deciding.
     let draft_card = cards.get(&public.card_id).await.unwrap().unwrap();
     assert_eq!(draft_card.state, CardState::Open);
+}
+
+const FIXTURE_EML: &str =
+    "From: fan@example.com\r\nSubject: Love the beans\r\n\r\nBest coffee in town.\r\n";
+
+#[test]
+fn parses_a_fixture_message() {
+    let (from, subject, body) = parse_rfc822(FIXTURE_EML.as_bytes()).unwrap();
+    assert_eq!(from, "fan@example.com");
+    assert_eq!(subject, "Love the beans");
+    assert_eq!(body.trim(), "Best coffee in town.");
+}
+
+#[test]
+fn builds_a_sendable_message() {
+    let sender = SmtpSender::gmail("owner@example.com", "secret");
+    let email = sender
+        .message("fan@example.com", "Re: beans", "Thanks!")
+        .unwrap();
+    let formatted = email.formatted();
+    let raw = String::from_utf8_lossy(&formatted);
+    assert!(raw.contains("fan@example.com"));
+    assert!(raw.contains("Re: beans"));
+}
+
+#[test]
+#[ignore = "needs GMAIL_* credentials and reads a real inbox"]
+fn imap_live_unread() {
+    let mailbox = ImapMailbox::gmail_from_env().unwrap();
+    let unread = agentrix_site_mail::Mailbox::unread(&mailbox).unwrap();
+    assert!(unread.len() < 10_000);
+}
+
+#[test]
+#[ignore = "needs GMAIL_* credentials and sends a real mail to SMTP_TEST_TO"]
+fn smtp_live_send() {
+    let to = std::env::var("SMTP_TEST_TO").unwrap();
+    let sender = SmtpSender::gmail_from_env().unwrap();
+    let sent = agentrix_site_mail::Sender::send(&sender, &to, "Agentrix validation", "Delete me.")
+        .unwrap();
+    assert!(sent.id.starts_with("smtp-"));
 }
