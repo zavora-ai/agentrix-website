@@ -6,6 +6,10 @@
 //! pages by extracting the facts back out of the rendered HTML and comparing them
 //! field by field, so the check reads what visitors read, not what the generator
 //! wrote.
+//!
+//! Phase 3 serves through [`Current`]: handlers load the served release per
+//! request, so publish and rollback swap what both audiences see without a
+//! restart.
 
 use std::collections::{HashMap, VecDeque};
 use std::net::IpAddr;
@@ -58,7 +62,7 @@ pub struct Provenance {
 
 /// An immutable, content-addressed bundle: the pages, their provenance, and the
 /// digest over both. The edge serves only what a release contains.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Release {
     /// Hex SHA-256 over the canonical pages, template and sources.
     pub digest: String,
@@ -79,6 +83,29 @@ pub struct Twin {
     pub facts: Vec<Fact>,
     /// The release digest the twin derives from.
     pub release: String,
+}
+
+/// The served release pointer. Handlers load it per request; [`set`](Self::set)
+/// swaps what both audiences see. The pointer always names an admitted release:
+/// only the LaunchGate path moves it.
+#[derive(Debug)]
+pub struct Current(Mutex<Arc<Release>>);
+
+impl Current {
+    /// A pointer serving `release`.
+    pub fn new(release: Release) -> Arc<Self> {
+        Arc::new(Self(Mutex::new(Arc::new(release))))
+    }
+
+    /// The release now served.
+    pub fn get(&self) -> Arc<Release> {
+        self.0.lock().expect("current release").clone()
+    }
+
+    /// Serves `release` from the next request on.
+    pub fn set(&self, release: Release) {
+        *self.0.lock().expect("current release") = Arc::new(release);
+    }
 }
 
 /// The fixture business site Phase 1 serves: home, services and contact.
@@ -375,7 +402,7 @@ impl Default for RateLimit {
 
 #[derive(Debug, Clone)]
 struct EdgeState {
-    release: Arc<Release>,
+    current: Arc<Current>,
     limit: RateLimit,
     hits: Arc<Mutex<HashMap<IpAddr, VecDeque<Instant>>>>,
 }
@@ -419,15 +446,16 @@ async fn rate_limit(
             .into_response();
     }
     let mut response = next.run(request).await;
-    if let Ok(value) = HeaderValue::from_str(&state.release.digest) {
+    if let Ok(value) = HeaderValue::from_str(&state.current.get().digest) {
         response.headers_mut().insert("x-release-digest", value);
     }
     response
 }
 
 async fn index(State(state): State<EdgeState>) -> Html<String> {
+    let release = state.current.get();
     let mut items = String::new();
-    for page in &state.release.pages {
+    for page in &release.pages {
         items.push_str(&format!(
             "      <li><a href=\"/p/{}\">{}</a> (<a href=\"/twin/{}\">twin</a>)</li>\n",
             escape(&page.slug),
@@ -437,23 +465,25 @@ async fn index(State(state): State<EdgeState>) -> Html<String> {
     }
     Html(format!(
         "<!DOCTYPE html>\n<html lang=\"en\">\n  <head><meta charset=\"utf-8\"><title>{}</title></head>\n  <body><main><h1>{}</h1><ul>\n{}</ul><footer>Release <code>{}</code></footer></main></body>\n</html>\n",
-        escape(&state.release.pages[0].title),
-        escape(&state.release.pages[0].title),
+        escape(&release.pages[0].title),
+        escape(&release.pages[0].title),
         items,
-        state.release.digest,
+        release.digest,
     ))
 }
 
 async fn human_page(State(state): State<EdgeState>, Path(slug): Path<String>) -> impl IntoResponse {
-    match state.release.pages.iter().find(|p| p.slug == slug) {
-        Some(page) => Html(render_page(page, &state.release.digest)).into_response(),
+    let release = state.current.get();
+    match release.pages.iter().find(|p| p.slug == slug) {
+        Some(page) => Html(render_page(page, &release.digest)).into_response(),
         None => (StatusCode::NOT_FOUND, "Unknown page.").into_response(),
     }
 }
 
 async fn twin(State(state): State<EdgeState>, Path(slug): Path<String>) -> impl IntoResponse {
-    match state.release.pages.iter().find(|p| p.slug == slug) {
-        Some(page) => Json(twin_of(page, &state.release.digest)).into_response(),
+    let release = state.current.get();
+    match release.pages.iter().find(|p| p.slug == slug) {
+        Some(page) => Json(twin_of(page, &release.digest)).into_response(),
         None => (
             StatusCode::NOT_FOUND,
             Json(serde_json::json!({ "error": "unknown page" })),
@@ -463,7 +493,8 @@ async fn twin(State(state): State<EdgeState>, Path(slug): Path<String>) -> impl 
 }
 
 async fn cli(State(state): State<EdgeState>, Json(body): Json<CliRequest>) -> impl IntoResponse {
-    let answer = run_command(&state.release, &body.command);
+    let release = state.current.get();
+    let answer = run_command(&release, &body.command);
     let status = if answer.ok {
         StatusCode::OK
     } else {
@@ -472,11 +503,9 @@ async fn cli(State(state): State<EdgeState>, Json(body): Json<CliRequest>) -> im
     (status, Json(answer)).into_response()
 }
 
-/// The read-only edge router over `release`: human pages at `/p/:slug`, twins at
-/// `/twin/:slug`, the CLI at `POST /cli`, all under the per-IP `limit`.
-pub fn router(release: Release, limit: RateLimit) -> Router {
+fn routes(current: Arc<Current>, limit: RateLimit) -> Router {
     let state = EdgeState {
-        release: Arc::new(release),
+        current,
         limit,
         hits: Arc::new(Mutex::new(HashMap::new())),
     };
@@ -491,4 +520,16 @@ pub fn router(release: Release, limit: RateLimit) -> Router {
             async move { rate_limit(guard, request, next).await }
         }))
         .with_state(state)
+}
+
+/// The read-only edge router over `release`: human pages at `/p/:slug`, twins at
+/// `/twin/:slug`, the CLI at `POST /cli`, all under the per-IP `limit`.
+pub fn router(release: Release, limit: RateLimit) -> Router {
+    routes(Current::new(release), limit)
+}
+
+/// The edge router over the shared [`Current`] pointer: publish and rollback move
+/// the pointer and both audiences follow from the next request on.
+pub fn router_on(current: &Arc<Current>, limit: RateLimit) -> Router {
+    routes(current.clone(), limit)
 }
