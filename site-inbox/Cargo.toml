@@ -1,0 +1,21 @@
+[package]
+name = "agentrix-site-inbox"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "Agentrix Website Phase 2: unified inbox — durable decision cards with exactly-once execution, role naming, and the Content Editor draft target"
+
+[workspace]
+
+[dependencies]
+chrono = { version = "0.4", features = ["serde"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+sqlx = { version = "0.9", default-features = false, features = ["sqlite", "runtime-tokio", "chrono", "json", "macros"] }
+thiserror = "2"
+tokio = { version = "1.40", features = ["full"] }
+tracing = "0.1"
+uuid = { version = "1", features = ["v4", "serde"] }
+
+[dev-dependencies]
+tempfile = "3"

@@ -30,7 +30,7 @@ principal + cross-store erasure.
 |---|---|---|
 | 0 Foundation | Findings reproduce; `cargo test -p agentrix-site-host` green twice | Pass (`bf4a369`) |
 | 1 Read-only dual site | Digest match human vs twin | Pass (see commit) |
-| 2 Draft-first content | Approval survives restart | — |
+| 2 Draft-first content | Approval survives restart | Pass (see commit) |
 | 3 Publish + rollback | Rollback to prior digest | — |
 | 4 Concierge + signals | Zero cross-site chunks | — |
 | 5 Email + support | Tier-above send impossible unapproved | — |
