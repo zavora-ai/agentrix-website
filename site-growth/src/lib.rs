@@ -19,7 +19,8 @@ pub use budget::{BudgetError, Reservation};
 pub use kpi::{Breach, Direction};
 pub use ladder::{Area, JobLevel, START_LEVELS};
 pub use social::{
-    AdRecord, LogMastodon, Mastodon, NurtureDraft, PostOutcome, nurture, publish_reply, record_ad,
+    AdRecord, InstagramSocial, LogSocial, MastodonSocial, NurtureDraft, PostOutcome, SocialPoster,
+    nurture, publish_reply, record_ad,
 };
 
 /// The site's money, measures and mandates in one SQLite database.

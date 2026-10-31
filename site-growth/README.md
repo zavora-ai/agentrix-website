@@ -11,3 +11,12 @@ spend, indicators, breaches, ladder — as a digest card.
 ```sh
 cargo test -p agentrix-site-growth   # the Phase 6 gate
 ```
+
+Live posters: Instagram is primary (`META_IG_USER_ID`, `META_IG_ACCESS_TOKEN`
+with `instagram_business_content_publish`, `META_IG_IMAGE_URL` brand image);
+Mastodon is the alternative (`MASTODON_INSTANCE`, `MASTODON_ACCESS_TOKEN`).
+Ignored live tests post for real — run with credentials set:
+
+```sh
+cargo test -p agentrix-site-growth -- --ignored
+```

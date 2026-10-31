@@ -3,8 +3,8 @@
 
 use agentrix_site_concierge::{LeadSignal, ReviewSignal};
 use agentrix_site_growth::{
-    Direction, Growth, JobLevel, LogMastodon, PostOutcome, nurture, publish_reply, record_ad,
-    weekly_review,
+    Direction, Growth, InstagramSocial, JobLevel, LogSocial, MastodonSocial, PostOutcome,
+    SocialPoster, nurture, publish_reply, record_ad, weekly_review,
 };
 use agentrix_site_inbox::{CardKind, CardStore};
 
@@ -68,7 +68,7 @@ async fn cap_halts_spend_and_holds_posts() {
     let dir = tempfile::tempdir().unwrap();
     let (growth, cards) = setup(&dir).await;
     growth.set_cap("demo", 100).await.unwrap();
-    let social = LogMastodon::default();
+    let social = LogSocial::default();
     let review = ReviewSignal {
         platform: "maps".into(),
         rating: 2,
@@ -156,4 +156,43 @@ async fn analyst_files_the_weekly_review() {
     assert_eq!(doc.breaches.len(), 1);
     assert!(doc.levels.iter().any(|(job, _)| job == "nurture"));
     assert_eq!(card.payload["spent_micro"], serde_json::json!(60));
+}
+
+#[test]
+fn live_poster_endpoints_are_pinned() {
+    let instagram =
+        InstagramSocial::new("12345", "token", "https://cdn.example/brand.png").unwrap();
+    assert_eq!(
+        instagram.media_url(),
+        "https://graph.facebook.com/v21.0/12345/media"
+    );
+    assert_eq!(
+        instagram.publish_url(),
+        "https://graph.facebook.com/v21.0/12345/media_publish"
+    );
+    let mastodon = MastodonSocial::new("https://mastodon.social/", "token").unwrap();
+    assert_eq!(
+        mastodon.status_url(),
+        "https://mastodon.social/api/v1/statuses"
+    );
+}
+
+#[test]
+#[ignore = "needs META_IG_* credentials and publishes a real post"]
+fn instagram_live_post() {
+    let poster = InstagramSocial::from_env().unwrap();
+    let id = poster
+        .post("Agentrix validation post — delete me.")
+        .unwrap();
+    assert!(!id.is_empty());
+}
+
+#[test]
+#[ignore = "needs MASTODON_* credentials and publishes a real post"]
+fn mastodon_live_post() {
+    let poster = MastodonSocial::from_env().unwrap();
+    let id = poster
+        .post("Agentrix validation post — delete me.")
+        .unwrap();
+    assert!(!id.is_empty());
 }

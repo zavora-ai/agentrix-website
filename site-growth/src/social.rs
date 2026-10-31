@@ -1,7 +1,13 @@
-//! The Sales Rep and Reputation Manager targets: held nurture drafts, metered
-//! social posts, and ads that are recorded with zero spend and no spend path.
+//! Social posters: Instagram primary, Mastodon alternative, one trait.
+//!
+//! [`SocialPoster`] publishes one status and returns the network's post id. The
+//! target never knows which network it posts to. Instagram needs a media URL for
+//! every post (its API publishes no text-only statuses), so [`InstagramSocial`]
+//! pairs each caption with the account's brand image; [`MastodonSocial`] posts
+//! text to any instance's statuses API.
 
 use std::sync::Mutex;
+use std::time::Duration;
 
 use agentrix_site_concierge::{LeadSignal, ReviewSignal};
 use agentrix_site_inbox::{Card, CardKind, CardStore, NewCard, StoreError};
@@ -24,31 +30,195 @@ pub enum SocialError {
     /// The payload did not serialize.
     #[error("social payload: {0}")]
     Json(#[from] serde_json::Error),
+    /// The network call failed.
+    #[error("social post: {0}")]
+    Post(String),
 }
 
-/// Posts one status. Live Mastodon and the recording stub implement the trait.
-pub trait Mastodon: Send + Sync {
-    /// Posts `status`, returning the post id.
+/// Publishes one status and returns the network's post id.
+pub trait SocialPoster: Send + Sync {
+    /// Posts `status`, returning the network's post id.
     fn post(&self, status: &str) -> Result<String, SocialError>;
 }
 
 /// Records posts in memory instead of publishing: the test social network.
 #[derive(Debug, Default)]
-pub struct LogMastodon {
+pub struct LogSocial {
     log: Mutex<Vec<String>>,
 }
 
-impl LogMastodon {
+impl LogSocial {
     /// The statuses recorded so far.
     pub fn posts(&self) -> Vec<String> {
         self.log.lock().expect("post log").clone()
     }
 }
 
-impl Mastodon for LogMastodon {
+impl SocialPoster for LogSocial {
     fn post(&self, status: &str) -> Result<String, SocialError> {
         self.log.lock().expect("post log").push(status.to_string());
         Ok(format!("post-{}", Uuid::new_v4().as_simple()))
+    }
+}
+
+fn http() -> Result<reqwest::blocking::Client, SocialError> {
+    reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(15))
+        .user_agent("agentrix-site/0.1")
+        .build()
+        .map_err(|e| SocialError::Post(e.to_string()))
+}
+
+/// Publishes through the Instagram Content Publishing API: a media container with
+/// the caption over the account's brand image, then the publish call. Reads
+/// `META_IG_USER_ID`, `META_IG_ACCESS_TOKEN` and `META_IG_IMAGE_URL` when built
+/// with [`from_env`](Self::from_env); the token needs
+/// `instagram_business_content_publish`.
+pub struct InstagramSocial {
+    user_id: String,
+    token: String,
+    image_url: String,
+    client: reqwest::blocking::Client,
+}
+
+impl InstagramSocial {
+    /// A poster for `user_id` pairing every caption with `image_url`.
+    pub fn new(
+        user_id: impl Into<String>,
+        token: impl Into<String>,
+        image_url: impl Into<String>,
+    ) -> Result<Self, SocialError> {
+        Ok(Self {
+            user_id: user_id.into(),
+            token: token.into(),
+            image_url: image_url.into(),
+            client: http()?,
+        })
+    }
+
+    /// A poster from the environment, or what is missing.
+    pub fn from_env() -> Result<Self, SocialError> {
+        let var = |name: &str| {
+            std::env::var(name).map_err(|_| SocialError::Post(format!("{name} is not set")))
+        };
+        Self::new(
+            var("META_IG_USER_ID")?,
+            var("META_IG_ACCESS_TOKEN")?,
+            var("META_IG_IMAGE_URL")?,
+        )
+    }
+
+    /// The media-container endpoint: pure, so tests pin it without posting.
+    pub fn media_url(&self) -> String {
+        format!("https://graph.facebook.com/v21.0/{}/media", self.user_id)
+    }
+
+    /// The publish endpoint: pure, so tests pin it without posting.
+    pub fn publish_url(&self) -> String {
+        format!(
+            "https://graph.facebook.com/v21.0/{}/media_publish",
+            self.user_id
+        )
+    }
+}
+
+impl SocialPoster for InstagramSocial {
+    fn post(&self, status: &str) -> Result<String, SocialError> {
+        let failed = |e: reqwest::Error| SocialError::Post(e.to_string());
+        let container: serde_json::Value = self
+            .client
+            .post(self.media_url())
+            .form(&[
+                ("image_url", self.image_url.as_str()),
+                ("caption", status),
+                ("access_token", self.token.as_str()),
+            ])
+            .send()
+            .map_err(failed)?
+            .error_for_status()
+            .map_err(failed)?
+            .json()
+            .map_err(failed)?;
+        let creation = container
+            .get("id")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| SocialError::Post("instagram returned no container id".into()))?;
+        let published: serde_json::Value = self
+            .client
+            .post(self.publish_url())
+            .form(&[
+                ("creation", creation),
+                ("access_token", self.token.as_str()),
+            ])
+            .send()
+            .map_err(failed)?
+            .error_for_status()
+            .map_err(failed)?
+            .json()
+            .map_err(failed)?;
+        published
+            .get("id")
+            .and_then(serde_json::Value::as_str)
+            .map(str::to_string)
+            .ok_or_else(|| SocialError::Post("instagram returned no media id".into()))
+    }
+}
+
+/// Publishes to a Mastodon instance's statuses API. Reads `MASTODON_INSTANCE`
+/// (such as `https://mastodon.social`) and `MASTODON_ACCESS_TOKEN` when built
+/// with [`from_env`](Self::from_env).
+pub struct MastodonSocial {
+    instance: String,
+    token: String,
+    client: reqwest::blocking::Client,
+}
+
+impl MastodonSocial {
+    /// A poster for `instance` with `token`.
+    pub fn new(instance: impl Into<String>, token: impl Into<String>) -> Result<Self, SocialError> {
+        Ok(Self {
+            instance: instance.into(),
+            token: token.into(),
+            client: http()?,
+        })
+    }
+
+    /// A poster from the environment, or what is missing.
+    pub fn from_env() -> Result<Self, SocialError> {
+        let var = |name: &str| {
+            std::env::var(name).map_err(|_| SocialError::Post(format!("{name} is not set")))
+        };
+        Self::new(var("MASTODON_INSTANCE")?, var("MASTODON_ACCESS_TOKEN")?)
+    }
+
+    /// The statuses endpoint: pure, so tests pin it without posting.
+    pub fn status_url(&self) -> String {
+        format!("{}/api/v1/statuses", self.instance.trim_end_matches('/'))
+    }
+}
+
+impl SocialPoster for MastodonSocial {
+    fn post(&self, status: &str) -> Result<String, SocialError> {
+        let failed = |e: reqwest::Error| SocialError::Post(e.to_string());
+        let answer: serde_json::Value = self
+            .client
+            .post(self.status_url())
+            .bearer_auth(&self.token)
+            .form(&[("status", status)])
+            .send()
+            .map_err(failed)?
+            .error_for_status()
+            .map_err(failed)?
+            .json()
+            .map_err(failed)?;
+        answer
+            .get("id")
+            .and_then(|id| {
+                id.as_str()
+                    .map(str::to_string)
+                    .or_else(|| id.as_i64().map(|id| id.to_string()))
+            })
+            .ok_or_else(|| SocialError::Post("mastodon returned no id".into()))
     }
 }
 
@@ -132,7 +302,7 @@ pub async fn publish_reply(
     growth: &Growth,
     site: &str,
     cards: &CardStore,
-    social: &dyn Mastodon,
+    social: &dyn SocialPoster,
     review: &ReviewSignal,
     reply: &str,
 ) -> Result<PostOutcome, SocialError> {

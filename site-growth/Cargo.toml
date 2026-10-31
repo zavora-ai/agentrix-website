@@ -11,6 +11,7 @@ description = "Agentrix Website Phase 6: budgets with halting caps, KPI breach d
 agentrix-site-concierge = { path = "../site-concierge" }
 agentrix-site-inbox = { path = "../site-inbox" }
 chrono = "0.4"
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 sqlx = { version = "0.9", default-features = false, features = ["sqlite", "runtime-tokio", "chrono", "json", "macros"] }
