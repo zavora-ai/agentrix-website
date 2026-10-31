@@ -50,7 +50,11 @@ impl QuietHours {
         }
         let day = now.date_naive();
         let end = day
-            .and_hms_opt(u32::from(self.end_min / 60), u32::from(self.end_min % 60), 0)
+            .and_hms_opt(
+                u32::from(self.end_min / 60),
+                u32::from(self.end_min % 60),
+                0,
+            )
             .expect("valid window end");
         let mut wake = Utc.from_utc_datetime(&end);
         if wake <= now {
