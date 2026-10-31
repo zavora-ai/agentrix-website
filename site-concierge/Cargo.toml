@@ -1,0 +1,22 @@
+[package]
+name = "agentrix-site-concierge"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "Agentrix Website Phase 4: concierge answers grounded in per-site corpora with citations, visitor principals, and signal emitters"
+
+[workspace]
+
+[dependencies]
+agentrix-site-inbox = { path = "../site-inbox" }
+chrono = "0.4"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+sqlx = { version = "0.9", default-features = false, features = ["sqlite", "runtime-tokio", "chrono", "json", "macros"] }
+thiserror = "2"
+tokio = { version = "1.40", features = ["full"] }
+tracing = "0.1"
+uuid = { version = "1", features = ["v4", "serde"] }
+
+[dev-dependencies]
+tempfile = "3"
