@@ -33,7 +33,7 @@ principal + cross-store erasure.
 | 2 Draft-first content | Approval survives restart | Pass (see commit) |
 | 3 Publish + rollback | Rollback to prior digest | Pass (see commit) |
 | 4 Concierge + signals | Zero cross-site chunks | Pass (see commit) |
-| 5 Email + support | Tier-above send impossible unapproved | — |
+| 5 Email + support | Tier-above send impossible unapproved | Pass (see commit) |
 | 6 Campaigns + social | Cap halts spend; breach demotes | — |
 | 7 Commerce | 202 → approve → complete, idempotent | — |
 | 8 Self-defense + costs | Incident card + rollback drill | — |
