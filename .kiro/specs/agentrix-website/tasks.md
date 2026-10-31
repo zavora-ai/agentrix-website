@@ -15,7 +15,7 @@ where work can fan out.
     { "wave": 1, "tasks": ["1"] },
     { "wave": 2, "tasks": ["2"] },
     { "wave": 3, "tasks": ["3", "4"] },
-    { "wave": 4, "tasks": ["5"] },
+    { "wave": 4, "tasks": ["5", "10"] },
     { "wave": 5, "tasks": ["6", "7"] },
     { "wave": 6, "tasks": ["8"] },
     { "wave": 7, "tasks": ["9"] }
@@ -26,7 +26,9 @@ where work can fan out.
 - Wave 1: foundation (done).
 - Wave 2: read-only dual site; everything else serves from it.
 - Wave 3: drafts/inbox and publish/rollback are independent once releases exist.
-- Wave 4: concierge needs the inbox and published twins.
+- Wave 4: concierge needs the inbox and published twins; migration needs the
+  LaunchGate and plugs parity in beside twin parity — independent of the
+  concierge once the gate exists.
 - Wave 5: email/support and campaigns/social fan out from the concierge.
 - Wave 6: commerce needs budgets, approvals and the LaunchGate proven.
 - Wave 7: self-defense closes over the full loop.
@@ -114,3 +116,13 @@ where work can fan out.
   - Checkpoint: incident drill from probe wake to rollback; probe wake-to-claim
     within budget; cross-site attempts denied and audited.
   - _Requirements: 1.1, 1.5, 1.6, 5.1, 5.3, 5.4, 6.3, 8.1_
+
+- [ ] 10. Phase 9: credential-free migration
+  - Build the migration pipeline: crawl public evidence, log every source and
+    transform, score content, links, products and metadata parity per axis.
+  - Admit candidates through the LaunchGate with a migration-parity check
+    behind `ParityCheck`; below 0.95 overall the gate refuses.
+  - File the go-live decision card with the parity report attached at 0.95+.
+  - Checkpoint: migrate the fixture legacy site; parity report attached; a
+    below-threshold candidate is refused and never served.
+  - _Requirements: 4.1, 4.2, 4.3, 4.4_
