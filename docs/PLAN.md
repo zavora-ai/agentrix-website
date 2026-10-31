@@ -37,7 +37,7 @@ principal + cross-store erasure.
 | 6 Campaigns + social | Cap halts spend; breach demotes | — |
 | 7 Commerce | 202 → approve → complete, idempotent | — |
 | 8 Self-defense + costs | Incident card + rollback drill | — |
-| 9 Migration | Parity ≥0.95 gates go-live; below refuses | — |
+| 9 Migration | Parity ≥0.95 gates go-live; below refuses | Pass (see commit) |
 
 ## Risks carried as gaps
 
