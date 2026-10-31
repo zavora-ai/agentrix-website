@@ -121,7 +121,7 @@ impl LaunchGate {
             return self.refuse(store, Some(&candidate.digest), refusal).await;
         }
         store
-            .admit(candidate)
+            .admit(&self.site, candidate)
             .await
             .map_err(|e| GateRefusal::Stores(e.to_string()))?;
         let served = store

@@ -36,7 +36,7 @@ principal + cross-store erasure.
 | 5 Email + support | Tier-above send impossible unapproved | Pass (see commit) |
 | 6 Campaigns + social | Cap halts spend; breach demotes | Pass (see commit) |
 | 7 Commerce | 202 → approve → complete, idempotent | Pass (see commit) |
-| 8 Self-defense + costs | Incident card + rollback drill | — |
+| 8 Self-defense + costs | Incident card + rollback drill | Pass (see commit) |
 | 9 Migration | Parity ≥0.95 gates go-live; below refuses | Pass (see commit) |
 
 ## Risks carried as gaps

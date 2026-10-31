@@ -14,6 +14,9 @@ pub enum StoreError {
     /// The site has no current release yet.
     #[error("site {0} has no current release")]
     NoCurrent(String),
+    /// The release belongs to another site.
+    #[error("release {0} belongs to another site")]
+    ForeignRelease(String),
     /// A bundle did not serialize.
     #[error("release bundle: {0}")]
     Json(#[from] serde_json::Error),
@@ -61,6 +64,7 @@ impl ReleaseStore {
         sqlx::query(
             "CREATE TABLE IF NOT EXISTS releases (
                 digest TEXT PRIMARY KEY,
+                site TEXT NOT NULL DEFAULT '',
                 bundle TEXT NOT NULL,
                 admitted TEXT NOT NULL
             )",
@@ -89,18 +93,22 @@ impl ReleaseStore {
         Ok(Self { pool })
     }
 
-    /// Records `release` as admitted. Re-admitting the same digest is a no-op.
-    pub async fn admit(&self, release: &Release) -> Result<(), StoreError> {
+    /// Records `release` as admitted for `site`. Re-admitting the same digest is a
+    /// no-op that keeps the first owner.
+    pub async fn admit(&self, site: &str, release: &Release) -> Result<(), StoreError> {
         let bundle = serde_json::json!({
             "pages": release.pages,
             "provenance": release.provenance,
         });
-        sqlx::query("INSERT OR IGNORE INTO releases (digest, bundle, admitted) VALUES (?, ?, ?)")
-            .bind(&release.digest)
-            .bind(bundle.to_string())
-            .bind(Utc::now().to_rfc3339())
-            .execute(&self.pool)
-            .await?;
+        sqlx::query(
+            "INSERT OR IGNORE INTO releases (digest, site, bundle, admitted) VALUES (?, ?, ?, ?)",
+        )
+        .bind(&release.digest)
+        .bind(site)
+        .bind(bundle.to_string())
+        .bind(Utc::now().to_rfc3339())
+        .execute(&self.pool)
+        .await?;
         self.log(
             "admitted",
             Some(&release.digest),
@@ -134,6 +142,15 @@ impl ReleaseStore {
         .transpose()
     }
 
+    /// The site that admitted `digest`, or `None` when unknown.
+    pub async fn owner(&self, digest: &str) -> Result<Option<String>, StoreError> {
+        let row: Option<(String,)> = sqlx::query_as("SELECT site FROM releases WHERE digest = ?")
+            .bind(digest)
+            .fetch_optional(&self.pool)
+            .await?;
+        Ok(row.map(|(site,)| site))
+    }
+
     /// Every admitted release's metadata, oldest first.
     pub async fn list(&self) -> Result<Vec<ReleaseMeta>, StoreError> {
         let rows: Vec<(String, String)> =
@@ -153,11 +170,15 @@ impl ReleaseStore {
     }
 
     /// Points `site`'s current at the admitted release `digest`: the one move
-    /// publish and rollback share. Refuses unknown digests without moving.
+    /// publish and rollback share. Refuses unknown digests — and another site's
+    /// releases — without moving.
     pub async fn set_current(&self, site: &str, digest: &str) -> Result<Release, StoreError> {
         let Some(release) = self.get(digest).await? else {
             return Err(StoreError::UnknownRelease(digest.to_string()));
         };
+        if self.owner(digest).await?.as_deref() != Some(site) {
+            return Err(StoreError::ForeignRelease(digest.to_string()));
+        }
         sqlx::query("INSERT INTO current (site, digest) VALUES (?, ?) ON CONFLICT(site) DO UPDATE SET digest = ?")
             .bind(site)
             .bind(digest)

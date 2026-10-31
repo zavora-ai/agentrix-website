@@ -44,7 +44,7 @@ where work can fan out.
     agentrix-site-host` green twice (restart durability proof).
   - _Requirements: 6.1, 6.4, 7.1, 7.2, 7.3, 7.4_
 
-- [ ] 2. Phase 1: read-only dual site
+- [x] 2. Phase 1: read-only dual site
   - Build the generator: template kinds to pages plus agent twins from one
     release bundle.
   - Serve human pages, twins and the public CLI from the AWP edge with rate
@@ -54,7 +54,7 @@ where work can fan out.
     within budget.
   - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5, 8.3_
 
-- [ ] 3. Phase 2: draft-first content
+- [x] 3. Phase 2: draft-first content
   - Implement the Content Editor runner target: gap signals to held drafts,
     never direct publish.
   - Build the unified inbox: decision cards for approvals, drafts, incidents
@@ -63,13 +63,13 @@ where work can fan out.
     applies once; cards name jobs by role (Content Editor, not freshness).
   - _Requirements: 1.2, 1.7, 3.1, 3.2, 6.2_
 
-- [ ] 4. Phase 3: publish plus rollback
+- [x] 4. Phase 3: publish plus rollback
   - Wire the LaunchGate: release admission on approvals, parity and policy.
   - Implement rollback to a named prior release for pages and twins.
   - Checkpoint: publish release N+1, roll back to N; both audiences serve N.
   - _Requirements: 3.5_
 
-- [ ] 5. Phase 4: concierge plus signals
+- [x] 5. Phase 4: concierge plus signals
   - Implement the Concierge runner target with visitor-UUID principals and
     grounded answers with citations.
   - Add signal emitters: content gaps, review sightings, lead capture and
@@ -79,7 +79,7 @@ where work can fan out.
     within budget.
   - _Requirements: 1.2, 4.5, 5.2, 8.2_
 
-- [ ] 6. Phase 5: email plus support
+- [x] 6. Phase 5: email plus support
   - Connect live mailboxes; the Chief of Staff target drafts held replies for
     owner-questions.
   - Enforce tier checks: a tier-above send without approval is impossible, not
@@ -88,7 +88,7 @@ where work can fan out.
     carded.
   - _Requirements: 1.3, 3.1_
 
-- [ ] 7. Phase 6: campaigns plus social
+- [x] 7. Phase 6: campaigns plus social
   - Implement the Sales Rep target and the Reputation Manager target with
     live Mastodon posting and recorded (never spent) ads.
   - Wire KPI sources and breach policy: caps halt spend, breaches demote jobs.
@@ -97,7 +97,7 @@ where work can fan out.
     wake; spend halts at cap.
   - _Requirements: 1.4, 3.3, 3.6_
 
-- [ ] 8. Phase 7: commerce
+- [x] 8. Phase 7: commerce
   - Implement held payments over AWP: 202 accepted, owner approval, completion,
     idempotent throughout.
   - Attribute every metered call to exactly one site's budget with
@@ -106,7 +106,7 @@ where work can fan out.
     idempotent.
   - _Requirements: 3.2, 3.3, 5.5_
 
-- [ ] 9. Phase 8: self-defense plus costs
+- [x] 9. Phase 8: self-defense plus costs
   - Implement the Security Guard and Facilities Manager runner targets
     model-free with log, KPI and stock wakes.
   - Add quiet-hours deferral, freeze propagation and the incident card plus
@@ -117,7 +117,7 @@ where work can fan out.
     within budget; cross-site attempts denied and audited.
   - _Requirements: 1.1, 1.5, 1.6, 5.1, 5.3, 5.4, 6.3, 8.1_
 
-- [ ] 10. Phase 9: credential-free migration
+- [x] 10. Phase 9: credential-free migration
   - Build the migration pipeline: crawl public evidence, log every source and
     transform, score content, links, products and metadata parity per axis.
   - Admit candidates through the LaunchGate with a migration-parity check
