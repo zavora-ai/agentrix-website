@@ -4,7 +4,10 @@
 
 use agentrix_site_edge::build_release;
 use agentrix_site_inbox::{Card, CardState, CardStore, Decision, Execute};
-use agentrix_site_migrate::{FileFetch, MigrationParity, crawl, file_go_live, migrate, score};
+use agentrix_site_migrate::Fetch;
+use agentrix_site_migrate::{
+    FileFetch, HttpFetch, MigrationParity, crawl, file_go_live, migrate, score,
+};
 use agentrix_site_release::{GateRefusal, LaunchGate, ReleaseStore};
 
 const HOME_HTML: &str = r#"<!DOCTYPE html><html><head><title>Bean Scene Roastery</title>
@@ -143,4 +146,39 @@ async fn below_threshold_candidate_is_refused_and_never_served() {
     );
     assert!(store.current("demo").await.unwrap().is_none());
     assert!(store.list().await.unwrap().is_empty());
+}
+
+/// Serves `body` once as `text/html` on loopback, returning the URL.
+fn serve_once(body: &'static str) -> String {
+    use std::io::{Read as _, Write as _};
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let url = format!(
+        "http://127.0.0.1:{}/",
+        listener.local_addr().unwrap().port()
+    );
+    std::thread::spawn(move || {
+        let (mut stream, _) = listener.accept().unwrap();
+        let mut head = [0_u8; 1024];
+        let _ = stream.read(&mut head);
+        let response = format!(
+            "HTTP/1.1 200 OK\r\ncontent-type: text/html\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{}",
+            body.len(),
+            body
+        );
+        stream.write_all(response.as_bytes()).unwrap();
+    });
+    url
+}
+
+#[test]
+fn http_fetch_reads_a_live_loopback_page() {
+    let url = serve_once(HOME_HTML);
+    let html = HttpFetch::default().fetch(&url).unwrap();
+    assert!(html.contains("Bean Scene Roastery"), "{html}");
+}
+
+#[test]
+fn http_fetch_refuses_errors() {
+    let result = HttpFetch::default().fetch("http://127.0.0.1:1/nothing-here");
+    assert!(result.is_err());
 }

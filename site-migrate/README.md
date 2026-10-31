@@ -11,3 +11,7 @@ check refuses and the candidate is never served. At or above threshold,
 ```sh
 cargo test -p agentrix-site-migrate   # the Phase 9 gate
 ```
+
+Live fetching reads public URLs over HTTP (`HttpFetch`): 15-second timeout,
+5 MB body cap, redirects followed. Proven against a loopback server in tests;
+no credentials exist on this path.

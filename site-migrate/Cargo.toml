@@ -12,6 +12,7 @@ agentrix-site-edge = { path = "../site-edge" }
 agentrix-site-inbox = { path = "../site-inbox" }
 agentrix-site-release = { path = "../site-release" }
 chrono = "0.4"
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 sha2 = "0.10"

@@ -10,9 +10,11 @@
 //! beside twin parity.
 
 pub mod crawl;
+pub mod live;
 pub mod parity;
 
 pub use crawl::{Evidence, EvidenceEntry, EvidencePage, Fetch, FileFetch, Product, crawl};
+pub use live::HttpFetch;
 pub use parity::{
     Candidate, MigrationParity, PARITY_THRESHOLD, ParityReport, file_go_live, migrate, score,
 };
