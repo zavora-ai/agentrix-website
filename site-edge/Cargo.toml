@@ -1,0 +1,23 @@
+[package]
+name = "agentrix-site-edge"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "Agentrix Website Phase 1: read-only dual site — one release bundle served as human pages, agent twins and a public CLI"
+
+[workspace]
+
+[dependencies]
+axum = { version = "0.8", features = ["macros"] }
+chrono = "0.4"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+sha2 = "0.10"
+tokio = { version = "1.40", features = ["full"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+uuid = { version = "1", features = ["v4", "serde"] }
+
+[dev-dependencies]
+tempfile = "3"
+tower = { version = "0.5", features = ["util"] }
