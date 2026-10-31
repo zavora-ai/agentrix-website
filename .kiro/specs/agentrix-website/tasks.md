@@ -115,7 +115,7 @@ where work can fan out.
     and audits.
   - Checkpoint: incident drill from probe wake to rollback; probe wake-to-claim
     within budget; cross-site attempts denied and audited.
-  - _Requirements: 1.1, 1.5, 1.6, 5.1, 5.3, 5.4, 6.3, 8.1_
+  - _Requirements: 1.1, 1.5, 1.6, 3.4, 5.1, 5.3, 5.4, 6.3, 8.1_
 
 - [x] 10. Phase 9: credential-free migration
   - Build the migration pipeline: crawl public evidence, log every source and
