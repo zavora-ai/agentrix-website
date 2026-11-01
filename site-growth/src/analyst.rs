@@ -26,7 +26,9 @@ pub struct DigestDoc {
 }
 
 /// Composes the weekly review and files it as an Analyst digest card: spend, all
-/// indicators, all breaches, and the ladder after this week's demotions.
+/// indicators, all breaches, and the current ladder. The review reports; the
+/// KPI tracker owns demotion, nightly, before the next wake — so the one level
+/// the review prints is already the enforced one.
 pub async fn weekly_review(
     growth: &Growth,
     site: &str,

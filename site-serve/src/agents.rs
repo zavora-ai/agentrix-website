@@ -20,6 +20,7 @@ use adk_model::muse::{MuseClient, MuseConfig};
 use adk_runner::Runner;
 use adk_tool::FunctionTool;
 use agentrix_site_concierge::Corpus;
+use agentrix_site_growth::Growth;
 use agentrix_site_inbox::{CardKind, CardStore, NewCard};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -54,23 +55,56 @@ pub fn build_model(config: &ServeConfig) -> anyhow::Result<Arc<dyn Llm>> {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct NoArgs {}
 
+/// Refuses when `job` is paused: the tools honor the ladder's pauses, so a
+/// breached area's jobs stop at the next wake and their signals wait.
+async fn check_running(
+    growth: &Arc<Growth>,
+    site: &str,
+    job: &'static str,
+) -> Result<(), adk_core::AdkError> {
+    let paused = growth
+        .paused_reason(site, job)
+        .await
+        .map_err(|e| adk_core::AdkError::config(e.to_string()))?;
+    if let Some(reason) = paused {
+        return Err(adk_core::AdkError::config(format!(
+            "ladder: {job} on {site} is paused: {reason}"
+        )));
+    }
+    Ok(())
+}
+
 /// A tool reading the oldest open signal record of one kind: the job's pending
 /// work. Returns the record's payload, or `{"empty": true}` when nothing waits.
 /// Reading never acknowledges; the filing tool closes the record it handled.
-pub fn next_tool(
-    signals: Arc<dyn SignalStore>,
-    partition: PartitionId,
-    kind: &'static str,
-    name: &'static str,
-    description: &'static str,
-) -> FunctionTool {
+/// What a pending-work tool reads: the store, the partition, the gate.
+pub struct NextWork {
+    /// The kernel signal store.
+    pub signals: Arc<dyn SignalStore>,
+    /// The back-office partition.
+    pub partition: PartitionId,
+    /// The ladder gate.
+    pub growth: Arc<Growth>,
+    /// The site served.
+    pub site: String,
+    /// The job reading, gated when paused.
+    pub job: &'static str,
+    /// The signal kind read.
+    pub kind: &'static str,
+}
+
+pub fn next_tool(work: NextWork, name: &'static str, description: &'static str) -> FunctionTool {
     FunctionTool::new(
         name,
         description,
         move |_ctx: Arc<dyn adk_core::ToolContext>, _args: serde_json::Value| {
-            let signals = signals.clone();
-            let partition = partition.clone();
+            let signals = work.signals.clone();
+            let partition = work.partition.clone();
+            let growth = work.growth.clone();
+            let site = work.site.clone();
+            let (job, kind) = (work.job, work.kind);
             async move {
+                check_running(&growth, &site, job).await?;
                 let filter = SignalFilter::default()
                     .partition(partition)
                     .kind(kind)
@@ -201,6 +235,7 @@ pub struct FileDraftArgs {
 pub fn file_draft_tool(
     cards: Arc<CardStore>,
     signals: Arc<dyn SignalStore>,
+    growth: Arc<Growth>,
     site: String,
 ) -> FunctionTool {
     FunctionTool::new(
@@ -209,8 +244,10 @@ pub fn file_draft_tool(
         move |_ctx: Arc<dyn adk_core::ToolContext>, args: serde_json::Value| {
             let cards = cards.clone();
             let signals = signals.clone();
+            let growth = growth.clone();
             let site = site.clone();
             async move {
+                check_running(&growth, &site, "freshness").await?;
                 let parsed: FileDraftArgs = serde_json::from_value(args.clone())
                     .map_err(|e| adk_core::AdkError::config(format!("bad draft args: {e}")))?;
                 let title = format!("Content Editor: agent draft for `{}`", parsed.page_slug);
@@ -248,6 +285,7 @@ pub struct FileReplyArgs {
 pub fn file_reply_draft_tool(
     cards: Arc<CardStore>,
     signals: Arc<dyn SignalStore>,
+    growth: Arc<Growth>,
     site: String,
 ) -> FunctionTool {
     FunctionTool::new(
@@ -256,8 +294,10 @@ pub fn file_reply_draft_tool(
         move |_ctx: Arc<dyn adk_core::ToolContext>, args: serde_json::Value| {
             let cards = cards.clone();
             let signals = signals.clone();
+            let growth = growth.clone();
             let site = site.clone();
             async move {
+                check_running(&growth, &site, "social").await?;
                 let parsed: FileReplyArgs = serde_json::from_value(args.clone())
                     .map_err(|e| adk_core::AdkError::config(format!("bad reply args: {e}")))?;
                 let title = format!("Reputation Manager: reply draft for {}", parsed.platform);
@@ -297,6 +337,7 @@ pub struct FileFollowupArgs {
 pub fn file_followup_tool(
     cards: Arc<CardStore>,
     signals: Arc<dyn SignalStore>,
+    growth: Arc<Growth>,
     site: String,
 ) -> FunctionTool {
     FunctionTool::new(
@@ -305,8 +346,10 @@ pub fn file_followup_tool(
         move |_ctx: Arc<dyn adk_core::ToolContext>, args: serde_json::Value| {
             let cards = cards.clone();
             let signals = signals.clone();
+            let growth = growth.clone();
             let site = site.clone();
             async move {
+                check_running(&growth, &site, "nurture").await?;
                 let parsed: FileFollowupArgs = serde_json::from_value(args.clone())
                     .map_err(|e| adk_core::AdkError::config(format!("bad followup args: {e}")))?;
                 let title = format!("Sales Rep: follow up with lead {}", parsed.lead_ref);
@@ -342,6 +385,7 @@ pub struct FileAnswerArgs {
 pub fn file_answer_draft_tool(
     cards: Arc<CardStore>,
     signals: Arc<dyn SignalStore>,
+    growth: Arc<Growth>,
     site: String,
 ) -> FunctionTool {
     FunctionTool::new(
@@ -350,8 +394,10 @@ pub fn file_answer_draft_tool(
         move |_ctx: Arc<dyn adk_core::ToolContext>, args: serde_json::Value| {
             let cards = cards.clone();
             let signals = signals.clone();
+            let growth = growth.clone();
             let site = site.clone();
             async move {
+                check_running(&growth, &site, "owner-questions").await?;
                 let parsed: FileAnswerArgs = serde_json::from_value(args.clone())
                     .map_err(|e| adk_core::AdkError::config(format!("bad answer args: {e}")))?;
                 let title = "Chief of Staff: answer draft for an escalation".to_string();
@@ -381,14 +427,16 @@ pub struct RetrieveArgs {
 }
 
 /// A tool quoting the site's corpus: the Steward's memory.
-pub fn retrieve_tool(corpus: Arc<Corpus>, site: String) -> FunctionTool {
+pub fn retrieve_tool(corpus: Arc<Corpus>, growth: Arc<Growth>, site: String) -> FunctionTool {
     FunctionTool::new(
         "retrieve_chunks",
         "Quotes the site's own pages for a question. Returns the top chunks with documents and sources.",
         move |_ctx: Arc<dyn adk_core::ToolContext>, args: serde_json::Value| {
             let corpus = corpus.clone();
+            let growth = growth.clone();
             let site = site.clone();
             async move {
+                check_running(&growth, &site, "owner-questions").await?;
                 let parsed: RetrieveArgs = serde_json::from_value(args)
                     .map_err(|e| adk_core::AdkError::config(format!("bad retrieve args: {e}")))?;
                 let hits = agentrix_site_concierge::retrieve(&corpus, &site, &parsed.query, 3)
@@ -436,9 +484,14 @@ pub fn build_runners(
         .model(model.clone())
         .tool(
             Arc::new(next_tool(
-                signals.clone(),
-                partition.clone(),
-                "content_gap",
+                NextWork {
+                    signals: signals.clone(),
+                    partition: partition.clone(),
+                    growth: stores.growth.clone(),
+                    site: site.to_string(),
+                    job: "freshness",
+                    kind: "content_gap",
+                },
                 "next_gap",
                 "Reads the oldest open content gap: record id, topic, count, samples. `{\"empty\": true}` when none waits.",
             )) as Arc<dyn adk_core::Tool>,
@@ -447,14 +500,20 @@ pub fn build_runners(
             Arc::new(file_draft_tool(
                 stores.cards.clone(),
                 signals.clone(),
+                stores.growth.clone(),
                 site.to_string(),
             )) as Arc<dyn adk_core::Tool>,
         )
         .tool(
             Arc::new(next_tool(
-                signals.clone(),
-                partition.clone(),
-                "review_seen",
+                NextWork {
+                    signals: signals.clone(),
+                    partition: partition.clone(),
+                    growth: stores.growth.clone(),
+                    site: site.to_string(),
+                    job: "social",
+                    kind: "review_seen",
+                },
                 "next_review",
                 "Reads the oldest open review sighting: record id, platform, rating, excerpt. `{\"empty\": true}` when none waits.",
             )) as Arc<dyn adk_core::Tool>,
@@ -463,6 +522,7 @@ pub fn build_runners(
             Arc::new(file_reply_draft_tool(
                 stores.cards.clone(),
                 signals.clone(),
+                stores.growth.clone(),
                 site.to_string(),
             )) as Arc<dyn adk_core::Tool>,
         )
@@ -486,9 +546,14 @@ pub fn build_runners(
         .model(model.clone())
         .tool(
             Arc::new(next_tool(
-                signals.clone(),
-                partition.clone(),
-                "lead_captured",
+                NextWork {
+                    signals: signals.clone(),
+                    partition: partition.clone(),
+                    growth: stores.growth.clone(),
+                    site: site.to_string(),
+                    job: "nurture",
+                    kind: "lead_captured",
+                },
                 "next_lead",
                 "Reads the oldest open captured lead: record id, lead_ref, channel. `{\"empty\": true}` when none waits.",
             )) as Arc<dyn adk_core::Tool>,
@@ -498,18 +563,17 @@ pub fn build_runners(
     let drafter = LlmAgentBuilder::new("followup_drafter")
         .description("Drafts the follow-up for a qualified lead")
         .instruction(
-            "Given the qualification line, call file_followup with its lead_ref, channel, your \
-             the lead_record it carries, and your short personal message. On NO_LEADS reply NOTHING_TO_DO and stop. Draft only; outreach never \
-             contacts unwatched.",
+            "Given the qualification line, call file_followup with its lead_ref, channel, the \
+             lead_record it carries, and your short personal message. On NO_LEADS reply \
+             NOTHING_TO_DO and stop. Draft only; outreach never contacts unwatched.",
         )
         .model(model.clone())
-        .tool(
-            Arc::new(file_followup_tool(
-                stores.cards.clone(),
-                signals.clone(),
-                site.to_string(),
-            )) as Arc<dyn adk_core::Tool>,
-        )
+        .tool(Arc::new(file_followup_tool(
+            stores.cards.clone(),
+            signals.clone(),
+            stores.growth.clone(),
+            site.to_string(),
+        )) as Arc<dyn adk_core::Tool>)
         .build()
         .map_err(|e| anyhow::anyhow!("{e}"))?;
     let outreach = SequentialAgent::new(
@@ -539,21 +603,27 @@ pub fn build_runners(
         .model(model)
         .tool(
             Arc::new(next_tool(
-                signals.clone(),
-                partition.clone(),
-                "support_escalation",
+                NextWork {
+                    signals: signals.clone(),
+                    partition: partition.clone(),
+                    growth: stores.growth.clone(),
+                    site: site.to_string(),
+                    job: "owner-questions",
+                    kind: "support_escalation",
+                },
                 "next_escalation",
                 "Reads the oldest open escalation: record id, reason, contact. `{\"empty\": true}` when none waits.",
             )) as Arc<dyn adk_core::Tool>,
         )
         .tool(
-            Arc::new(retrieve_tool(stores.corpus.clone(), site.to_string()))
+            Arc::new(retrieve_tool(stores.corpus.clone(), stores.growth.clone(), site.to_string()))
                 as Arc<dyn adk_core::Tool>,
         )
         .tool(
             Arc::new(file_answer_draft_tool(
                 stores.cards.clone(),
                 signals,
+                stores.growth.clone(),
                 site.to_string(),
             )) as Arc<dyn adk_core::Tool>,
         )

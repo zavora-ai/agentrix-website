@@ -68,6 +68,10 @@ async fn cap_halts_spend_and_holds_posts() {
     let dir = tempfile::tempdir().unwrap();
     let (growth, cards) = setup(&dir).await;
     growth.set_cap("demo", 100).await.unwrap();
+    growth
+        .set_level("demo", "social", JobLevel::ActWithinBudget)
+        .await
+        .unwrap();
     let social = LogSocial::default();
     let review = ReviewSignal {
         platform: "maps".into(),
@@ -212,4 +216,91 @@ fn open_poster_fails_fast_without_network() {
     assert!(poster.post("hi").is_err());
     let err = poster.post("hi").unwrap_err().to_string();
     assert!(err.contains("circuit open"), "{err}");
+}
+
+#[tokio::test]
+async fn below_level_posts_hold_on_a_card() {
+    let dir = tempfile::tempdir().unwrap();
+    let (growth, cards) = setup(&dir).await;
+    growth.set_cap("demo", 1_000_000).await.unwrap();
+    let social = LogSocial::default();
+    let review = ReviewSignal {
+        platform: "maps".into(),
+        rating: 2,
+        excerpt: "slow".into(),
+    };
+
+    // Social starts at Propose: the live post refuses and cards instead.
+    assert_eq!(
+        growth.level("demo", "social").await.unwrap(),
+        JobLevel::Propose
+    );
+    let held = publish_reply(&growth, "demo", &cards, &social, &review, "Thanks.")
+        .await
+        .unwrap();
+    let card = match held {
+        PostOutcome::Held(card) => card,
+        PostOutcome::Posted(_) => panic!("below-level posting must hold"),
+    };
+    assert!(card.title.contains("ladder"), "{}", card.title);
+    assert!(social.posts().is_empty(), "nothing sent");
+    let (_, spent, _) = growth.budget("demo").await.unwrap();
+    assert_eq!(spent, 0, "nothing reserved");
+
+    // Promoted, the same call posts.
+    growth
+        .set_level("demo", "social", JobLevel::ActWithinBudget)
+        .await
+        .unwrap();
+    let posted = publish_reply(&growth, "demo", &cards, &social, &review, "Thanks.")
+        .await
+        .unwrap();
+    assert!(matches!(posted, PostOutcome::Posted(_)));
+    assert_eq!(social.posts().len(), 1);
+}
+
+#[tokio::test]
+async fn paused_jobs_hold_until_resumed() {
+    let dir = tempfile::tempdir().unwrap();
+    let (growth, cards) = setup(&dir).await;
+    growth.set_cap("demo", 1_000_000).await.unwrap();
+    growth
+        .set_level("demo", "social", JobLevel::ActWithinBudget)
+        .await
+        .unwrap();
+    let social = LogSocial::default();
+    let review = ReviewSignal {
+        platform: "maps".into(),
+        rating: 4,
+        excerpt: "fine".into(),
+    };
+
+    growth
+        .pause_job("demo", "social", "the rating guardrail breached")
+        .await
+        .unwrap();
+    assert_eq!(
+        growth
+            .paused_reason("demo", "social")
+            .await
+            .unwrap()
+            .as_deref(),
+        Some("the rating guardrail breached")
+    );
+    let held = publish_reply(&growth, "demo", &cards, &social, &review, "Thanks.")
+        .await
+        .unwrap();
+    let card = match held {
+        PostOutcome::Held(card) => card,
+        PostOutcome::Posted(_) => panic!("a paused job must hold"),
+    };
+    assert!(card.title.contains("paused"), "{}", card.title);
+    assert!(social.posts().is_empty());
+
+    assert!(growth.resume_job("demo", "social").await.unwrap());
+    assert!(!growth.resume_job("demo", "social").await.unwrap());
+    let posted = publish_reply(&growth, "demo", &cards, &social, &review, "Thanks.")
+        .await
+        .unwrap();
+    assert!(matches!(posted, PostOutcome::Posted(_)));
 }

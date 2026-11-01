@@ -18,6 +18,7 @@ use uuid::Uuid;
 
 use crate::Growth;
 use crate::budget::BudgetError;
+use crate::ladder::JobLevel;
 
 /// What the targets can get wrong.
 #[derive(Debug, Error)]
@@ -276,7 +277,7 @@ pub struct NurtureDraft {
 pub enum PostOutcome {
     /// Posted and committed: the post id.
     Posted(String),
-    /// Held at the cap: the filed card, for the owner to fund or approve.
+    /// Held on a card: below ladder level, paused, or at the cap.
     Held(Card),
 }
 
@@ -330,9 +331,10 @@ pub async fn nurture(
     Ok(filed)
 }
 
-/// The Reputation Manager target: reserves the post's cost, posts the reply, and
-/// commits — or, at the cap, files the reply's card and holds it. The cap halts
-/// spend before anything is sent, so a held reply is never half-posted.
+/// The Reputation Manager target: the ladder gate first (a paused or below-level
+/// job holds the reply on a card), then the cost reservation, then the post.
+/// The cap halts spend before anything is sent, so a held reply is never
+/// half-posted.
 pub async fn publish_reply(
     growth: &Growth,
     site: &str,
@@ -341,6 +343,21 @@ pub async fn publish_reply(
     review: &ReviewSignal,
     reply: &str,
 ) -> Result<PostOutcome, SocialError> {
+    if let Err(refused) = growth
+        .check_ready(site, "social", JobLevel::ActWithinBudget, "post a reply")
+        .await
+    {
+        let card = cards
+            .file(NewCard::new(
+                site,
+                CardKind::Draft,
+                "Reputation Manager",
+                format!("Reputation Manager: reply held ({refused})"),
+                serde_json::json!({ "review": review, "reply": reply }),
+            ))
+            .await?;
+        return Ok(PostOutcome::Held(card));
+    }
     let reservation = match growth.reserve(site, POST_COST_MICRO, "social post").await {
         Ok(reservation) => reservation,
         Err(BudgetError::OverCap { .. }) => {

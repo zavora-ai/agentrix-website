@@ -404,3 +404,72 @@ async fn captured_lead_runs_the_outreach_team_end_to_end() {
         "filing acknowledges the lead"
     );
 }
+
+/// A paused job refuses its tools: no card files and the signal waits open.
+#[tokio::test]
+async fn paused_freshness_files_nothing_and_waits() {
+    use adk_core::{Content, SessionId, UserId};
+    use futures::StreamExt as _;
+
+    let dir = tempfile::tempdir().unwrap();
+    let (config, stores, kernel_stores) = setup(&dir).await;
+    prefile(&kernel_stores, &config, gap_kind()).await;
+    stores
+        .growth
+        .pause_job("demo", "freshness", "test pause")
+        .await
+        .unwrap();
+    let model = scripted(vec![
+        adk_model::ScriptedResponse::function_call("next_gap", serde_json::json!({})),
+        adk_model::ScriptedResponse::text("I cannot read gaps while paused."),
+    ]);
+    let sessions: Arc<dyn adk_session::SessionService> =
+        Arc::new(adk_session::InMemorySessionService::new());
+    let runners = agents::build_runners(
+        &config.app,
+        &config.site,
+        &stores,
+        sessions.clone(),
+        model,
+        kernel_stores.signals.clone(),
+    )
+    .unwrap();
+    let growth = runners
+        .iter()
+        .find(|(target, _)| target == "growth")
+        .expect("growth runner")
+        .1
+        .clone();
+    let session = sessions
+        .create(adk_session::CreateRequest {
+            app_name: config.app.clone(),
+            user_id: "owner".to_string(),
+            session_id: None,
+            state: Default::default(),
+        })
+        .await
+        .unwrap();
+    let mut events = growth
+        .run(
+            UserId::new("owner").unwrap(),
+            SessionId::new(session.id().to_string()).unwrap(),
+            Content::new("user").with_text("{\"job\": \"freshness\"}"),
+        )
+        .await
+        .unwrap();
+    while let Some(event) = events.next().await {
+        event.unwrap();
+    }
+    let open = stores.cards.list_open(&config.site).await.unwrap();
+    assert!(
+        open.iter().all(|card| card.role != "Content Editor"),
+        "a paused job files nothing"
+    );
+    assert_eq!(
+        open_of(&kernel_stores, &config.app, "content_gap")
+            .await
+            .len(),
+        1,
+        "the gap waits open for resume"
+    );
+}

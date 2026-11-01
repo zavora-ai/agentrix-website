@@ -153,6 +153,111 @@ impl Growth {
         Ok(moved)
     }
 
+    /// Sets `job`'s level outright: the owner's promotion path. Demotion stays one
+    /// step through [`Growth::demote_area`]; setting jumps, so only the owner
+    /// (or a test) calls it.
+    pub async fn set_level(
+        &self,
+        site: &str,
+        job: &str,
+        level: JobLevel,
+    ) -> Result<(), BudgetError> {
+        self.seed_ladder(site).await?;
+        sqlx::query(
+            "INSERT INTO job_levels (site, job, level) VALUES (?, ?, ?)
+             ON CONFLICT (site, job) DO UPDATE SET level = excluded.level",
+        )
+        .bind(site)
+        .bind(job)
+        .bind(level.as_str())
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    /// Refuses below `minimum`: the level check every live effect runs first.
+    /// Callers file a decision card on refusal — the action waits, it never
+    /// sneaks through.
+    pub async fn require_level(
+        &self,
+        site: &str,
+        job: &str,
+        minimum: JobLevel,
+        action: &str,
+    ) -> Result<JobLevel, BudgetError> {
+        let have = self.level(site, job).await?;
+        if have < minimum {
+            return Err(BudgetError::BelowLevel {
+                site: site.to_string(),
+                job: job.to_string(),
+                have,
+                need: minimum,
+                action: action.to_string(),
+            });
+        }
+        Ok(have)
+    }
+
+    /// Pauses `job` for `reason`: its tools refuse until [`Growth::resume_job`].
+    /// The KPI tracker pauses breached areas; the owner resumes by decision.
+    pub async fn pause_job(&self, site: &str, job: &str, reason: &str) -> Result<(), BudgetError> {
+        sqlx::query(
+            "INSERT INTO job_pauses (site, job, reason, paused_at) VALUES (?, ?, ?, ?)
+             ON CONFLICT (site, job) DO UPDATE SET reason = excluded.reason,
+             paused_at = excluded.paused_at",
+        )
+        .bind(site)
+        .bind(job)
+        .bind(reason)
+        .bind(chrono::Utc::now().to_rfc3339())
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    /// Lifts `job`'s pause; `false` when it was not paused.
+    pub async fn resume_job(&self, site: &str, job: &str) -> Result<bool, BudgetError> {
+        let done = sqlx::query("DELETE FROM job_pauses WHERE site = ? AND job = ?")
+            .bind(site)
+            .bind(job)
+            .execute(&self.pool)
+            .await?;
+        Ok(done.rows_affected() > 0)
+    }
+
+    /// Why `job` is paused, or `None` when it runs.
+    pub async fn paused_reason(
+        &self,
+        site: &str,
+        job: &str,
+    ) -> Result<Option<String>, BudgetError> {
+        let row: Option<(String,)> =
+            sqlx::query_as("SELECT reason FROM job_pauses WHERE site = ? AND job = ?")
+                .bind(site)
+                .bind(job)
+                .fetch_optional(&self.pool)
+                .await?;
+        Ok(row.map(|(reason,)| reason))
+    }
+
+    /// The full gate: a paused job refuses first, then a below-minimum job.
+    pub async fn check_ready(
+        &self,
+        site: &str,
+        job: &str,
+        minimum: JobLevel,
+        action: &str,
+    ) -> Result<JobLevel, BudgetError> {
+        if let Some(reason) = self.paused_reason(site, job).await? {
+            return Err(BudgetError::Paused {
+                site: site.to_string(),
+                job: job.to_string(),
+                reason,
+            });
+        }
+        self.require_level(site, job, minimum, action).await
+    }
+
     /// Applies every current breach: demotes each breached area once per call.
     pub async fn apply_breaches(
         &self,

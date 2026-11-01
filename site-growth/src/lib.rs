@@ -53,6 +53,9 @@ impl Growth {
             "CREATE TABLE IF NOT EXISTS job_levels (
                 site TEXT NOT NULL, job TEXT NOT NULL, level TEXT NOT NULL,
                 PRIMARY KEY (site, job))",
+            "CREATE TABLE IF NOT EXISTS job_pauses (
+                site TEXT NOT NULL, job TEXT NOT NULL, reason TEXT NOT NULL,
+                paused_at TEXT NOT NULL, PRIMARY KEY (site, job))",
             "CREATE TABLE IF NOT EXISTS ad_records (
                 id TEXT PRIMARY KEY, site TEXT NOT NULL, campaign TEXT NOT NULL,
                 channel TEXT NOT NULL, content TEXT NOT NULL,

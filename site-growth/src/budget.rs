@@ -6,6 +6,7 @@ use thiserror::Error;
 use uuid::Uuid;
 
 use crate::Growth;
+use crate::ladder::JobLevel;
 
 /// What the ledger can get wrong.
 #[derive(Debug, Error)]
@@ -34,6 +35,30 @@ pub enum BudgetError {
     /// The database failed.
     #[error("budget store: {0}")]
     Store(String),
+    /// The job's ladder level is below the action's minimum.
+    #[error("ladder: {job} on {site} is at {have:?}, {action} needs {need:?}")]
+    BelowLevel {
+        /// The site.
+        site: String,
+        /// The job refused.
+        job: String,
+        /// Its level.
+        have: JobLevel,
+        /// The action's minimum.
+        need: JobLevel,
+        /// What was attempted.
+        action: String,
+    },
+    /// The job is paused.
+    #[error("ladder: {job} on {site} is paused: {reason}")]
+    Paused {
+        /// The site.
+        site: String,
+        /// The job refused.
+        job: String,
+        /// Why it is paused.
+        reason: String,
+    },
 }
 
 impl From<sqlx::Error> for BudgetError {
