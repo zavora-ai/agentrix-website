@@ -426,3 +426,58 @@ fn serve_binary_self_checks_then_serves() {
     child.wait().ok();
     assert!(green, "the served path must self-check green");
 }
+
+/// Failed runs file Security Guard incident cards; completed runs file
+/// nothing.
+#[tokio::test]
+async fn failed_runs_file_incident_cards() {
+    use std::time::{Duration, Instant};
+
+    use agentrix_site_inbox::CardKind;
+    use agentrix_site_serve::incident_watch;
+
+    let dir = tempfile::tempdir().unwrap();
+    let config = config(&dir);
+    std::fs::create_dir_all(&config.data).unwrap();
+    let stores = ProductStores::open(&config.data).await.unwrap();
+    let bus = adk_kernel::EventBus::new(16);
+    let watcher = incident_watch(bus.subscribe(), stores.cards.clone(), config.site.clone());
+    bus.publish(adk_kernel::KernelEvent::Process {
+        pid: "run-1".to_string(),
+        from: adk_core::RunState::Running,
+        to: adk_core::RunState::Failed,
+        reason: Some("tool blew up".to_string()),
+    });
+    let since = Instant::now();
+    loop {
+        let open = stores.cards.list_open(&config.site).await.unwrap();
+        if let Some(card) = open
+            .iter()
+            .find(|card| card.role == "Security Guard" && card.kind == CardKind::Incident)
+        {
+            assert!(card.title.contains("run-1"), "{}", card.title);
+            break;
+        }
+        assert!(
+            since.elapsed() < Duration::from_secs(10),
+            "the failure must card promptly"
+        );
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    bus.publish(adk_kernel::KernelEvent::Process {
+        pid: "run-2".to_string(),
+        from: adk_core::RunState::Running,
+        to: adk_core::RunState::Completed,
+        reason: None,
+    });
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    let open = stores.cards.list_open(&config.site).await.unwrap();
+    assert_eq!(
+        open.iter()
+            .filter(|card| card.kind == CardKind::Incident)
+            .count(),
+        1,
+        "completed runs file nothing"
+    );
+    watcher.abort();
+}

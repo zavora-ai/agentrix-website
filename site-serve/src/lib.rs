@@ -168,6 +168,39 @@ pub async fn seed_demo(stores: &ProductStores, site: &str) -> anyhow::Result<Str
     Ok(served.digest)
 }
 
+/// Watches the kernel bus and files a Security Guard incident card for every
+/// run that fails: the supervisor parks and retries, the owner hears about
+/// the ones that stay down. Runs until aborted.
+pub fn incident_watch(
+    mut subscriber: adk_kernel::EventSubscriber,
+    cards: Arc<CardStore>,
+    site: String,
+) -> tokio::task::JoinHandle<()> {
+    tokio::spawn(async move {
+        while let Some(record) = subscriber.recv().await {
+            let adk_kernel::KernelEvent::Process {
+                pid, to, reason, ..
+            } = &record.event
+            else {
+                continue;
+            };
+            if !matches!(to, adk_core::RunState::Failed) {
+                continue;
+            }
+            let card = NewCard::new(
+                site.as_str(),
+                CardKind::Incident,
+                "Security Guard",
+                format!("Security Guard: run {pid} failed"),
+                serde_json::json!({ "pid": pid, "reason": reason }),
+            );
+            if let Err(error) = cards.file(card).await {
+                tracing::warn!(error = %error, "incident card filing failed");
+            }
+        }
+    })
+}
+
 /// Serves `config`: stores, seed, agents, started kernel, live edge. Runs until
 /// Ctrl-C, then stops the kernel.
 pub async fn serve(config: &ServeConfig) -> anyhow::Result<()> {
@@ -225,6 +258,11 @@ pub async fn serve(config: &ServeConfig) -> anyhow::Result<()> {
         workflows,
     )
     .await?;
+    let incidents = incident_watch(
+        kernel.bus().subscribe(),
+        stores.cards.clone(),
+        config.site.clone(),
+    );
     let partition: adk_kernel::PartitionId = format!("{}.back-office", config.app).into();
     let mut check = agentrix_site_host::SelfCheck::new();
     check.stores(&workflows::kernel_db_url(&config.data));
@@ -288,6 +326,7 @@ pub async fn serve(config: &ServeConfig) -> anyhow::Result<()> {
     })
     .await
     .map_err(anyhow_err)?;
+    incidents.abort();
     kernel.stop().await.map_err(anyhow_err)?;
     Ok(())
 }
