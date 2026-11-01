@@ -175,3 +175,41 @@ fn smtp_live_send() {
         .unwrap();
     assert!(sent.id.starts_with("smtp-"));
 }
+
+fn open_breaker() -> Arc<agentrix_site_defense::Breaker> {
+    use std::time::Duration;
+
+    let breaker = Arc::new(agentrix_site_defense::Breaker::new(
+        "mail",
+        1,
+        Duration::from_secs(60),
+    ));
+    let _ = breaker.call::<(), imap::Error>(
+        1,
+        Duration::ZERO,
+        || Err(imap::Error::ConnectionLost),
+        |_| false,
+    );
+    breaker
+}
+
+/// An open circuit fails both guards before any network I/O.
+#[test]
+fn guarded_mail_fails_fast_when_circuit_open() {
+    use agentrix_site_mail::{Mailbox, Sender};
+
+    let mailbox = ImapMailbox::gmail("u", "p").with_breaker(open_breaker());
+    let error = mailbox
+        .unread()
+        .expect_err("open IMAP circuit must fail fast");
+    assert!(matches!(error, SendError::Sender(_)), "{error:?}");
+    assert!(error.to_string().contains("circuit"), "{error}");
+
+    let sender =
+        SmtpSender::relay("smtp.gmail.com", "u@example.com", "p").with_breaker(open_breaker());
+    let error = sender
+        .send("a@example.com", "s", "b")
+        .expect_err("open SMTP circuit must fail fast");
+    assert!(matches!(error, SendError::Sender(_)), "{error:?}");
+    assert!(error.to_string().contains("circuit"), "{error}");
+}

@@ -5,6 +5,11 @@
 //! `smtp.gmail.com:587`) with an app password from the environment — Gmail no
 //! longer takes account passwords for IMAP or SMTP.
 
+use std::sync::Arc;
+use std::time::Duration;
+
+use agentrix_site_defense::{Breaker, BreakerCall};
+
 use crate::mail::{InboundMail, Mailbox, SendError, Sender, SentMail};
 use mailparse::MailHeaderMap as _;
 
@@ -14,6 +19,7 @@ pub struct ImapMailbox {
     port: u16,
     user: String,
     pass: String,
+    breaker: Arc<Breaker>,
 }
 
 impl ImapMailbox {
@@ -29,7 +35,14 @@ impl ImapMailbox {
             port,
             user: user.into(),
             pass: pass.into(),
+            breaker: Arc::new(Breaker::new("imap", 5, Duration::from_secs(60))),
         }
+    }
+
+    /// Guards the mailbox with `breaker` instead of the default.
+    pub fn with_breaker(mut self, breaker: Arc<Breaker>) -> Self {
+        self.breaker = breaker;
+        self
     }
 
     /// Gmail's mailbox: `imap.gmail.com:993` with an app password.
@@ -57,35 +70,58 @@ pub fn parse_rfc822(bytes: &[u8]) -> Result<(String, String, String), SendError>
 
 impl Mailbox for ImapMailbox {
     fn unread(&self) -> Result<Vec<InboundMail>, SendError> {
-        let failed = |e: imap::Error| SendError::Sender(e.to_string());
+        let raw = self
+            .breaker
+            .call(
+                3,
+                Duration::from_millis(500),
+                || self.fetch_raw(),
+                |error: &imap::Error| {
+                    matches!(error, imap::Error::Io(_) | imap::Error::ConnectionLost)
+                },
+            )
+            .map_err(|call| match call {
+                BreakerCall::Open(open) => SendError::Sender(open.to_string()),
+                BreakerCall::Error(error) => SendError::Sender(error.to_string()),
+            })?;
+        let mut mail = Vec::new();
+        for (uid, bytes) in raw {
+            let (from, subject, body) = parse_rfc822(&bytes)?;
+            mail.push(InboundMail {
+                id: format!("imap-{uid}"),
+                from,
+                subject: subject.trim().to_string(),
+                body: body.trim().to_string(),
+            });
+        }
+        Ok(mail)
+    }
+}
+
+impl ImapMailbox {
+    /// Fetches raw unseen messages: connect, select, search, fetch. Reading is
+    /// idempotent, so the breaker retries I/O drops and lost connections.
+    fn fetch_raw(&self) -> Result<Vec<(u32, Vec<u8>)>, imap::Error> {
         let tls = native_tls::TlsConnector::builder()
             .build()
-            .map_err(|e| SendError::Sender(e.to_string()))?;
-        let client = imap::connect((self.host.as_str(), self.port), self.host.as_str(), &tls)
-            .map_err(failed)?;
+            .map_err(|e| imap::Error::Io(std::io::Error::other(e.to_string())))?;
+        let client = imap::connect((self.host.as_str(), self.port), self.host.as_str(), &tls)?;
         let mut session = client
             .login(self.user.as_str(), self.pass.as_str())
-            .map_err(|(e, _)| failed(e))?;
-        session.select("INBOX").map_err(failed)?;
-        let uids = session.search("UNSEEN").map_err(failed)?;
-        let mut mail = Vec::new();
+            .map_err(|(e, _)| e)?;
+        session.select("INBOX")?;
+        let uids = session.search("UNSEEN")?;
+        let mut raw = Vec::new();
         for uid in uids.iter().take(50) {
-            let fetched = session.fetch(uid.to_string(), "(RFC822)").map_err(failed)?;
+            let fetched = session.fetch(uid.to_string(), "(RFC822)")?;
             for message in fetched.iter() {
-                let Some(bytes) = message.body() else {
-                    continue;
-                };
-                let (from, subject, body) = parse_rfc822(bytes)?;
-                mail.push(InboundMail {
-                    id: format!("imap-{uid}"),
-                    from,
-                    subject: subject.trim().to_string(),
-                    body: body.trim().to_string(),
-                });
+                if let Some(bytes) = message.body() {
+                    raw.push((*uid, bytes.to_vec()));
+                }
             }
         }
         let _ = session.logout();
-        Ok(mail)
+        Ok(raw)
     }
 }
 
@@ -94,6 +130,7 @@ pub struct SmtpSender {
     host: String,
     user: String,
     pass: String,
+    breaker: Arc<Breaker>,
 }
 
 impl SmtpSender {
@@ -107,7 +144,14 @@ impl SmtpSender {
             host: host.into(),
             user: user.into(),
             pass: pass.into(),
+            breaker: Arc::new(Breaker::new("smtp", 5, Duration::from_secs(60))),
         }
+    }
+
+    /// Guards the sender with `breaker` instead of the default.
+    pub fn with_breaker(mut self, breaker: Arc<Breaker>) -> Self {
+        self.breaker = breaker;
+        self
     }
 
     /// Gmail's sender: `smtp.gmail.com` with an app password.
@@ -154,9 +198,17 @@ impl Sender for SmtpSender {
             .map_err(|e| SendError::Sender(e.to_string()))?
             .credentials(Credentials::new(self.user.clone(), self.pass.clone()))
             .build();
-        mailer
-            .send(&email)
-            .map_err(|e| SendError::Sender(e.to_string()))?;
+        self.breaker
+            .call(
+                3,
+                Duration::from_millis(500),
+                || mailer.send(&email),
+                |error: &lettre::transport::smtp::Error| error.is_transient(),
+            )
+            .map_err(|call| match call {
+                BreakerCall::Open(open) => SendError::Sender(open.to_string()),
+                BreakerCall::Error(error) => SendError::Sender(error.to_string()),
+            })?;
         Ok(SentMail {
             id: format!("smtp-{}", uuid::Uuid::new_v4().as_simple()),
             draft: String::new(),
