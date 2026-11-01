@@ -618,3 +618,109 @@ async fn quiet_hours_defer_the_tools() {
         "the gap waits open for the window's end"
     );
 }
+
+/// Wake to claim stays far inside the 60-second probe budget: the run leaves
+/// Queued promptly after the signal lands.
+#[tokio::test]
+async fn wake_to_claim_is_fast() {
+    use adk_core::{DurableRunStore, RunFilter, RunState};
+
+    let dir = tempfile::tempdir().unwrap();
+    let (config, stores, kernel_stores) = setup(&dir).await;
+    let (kernel, sink) = start_kernel(
+        &config,
+        &stores,
+        &kernel_stores,
+        agents::build_model(&config).unwrap(),
+        None,
+    )
+    .await;
+    let since = Instant::now();
+    sink.emit(envelope(&config.site, gap_kind(), "concierge"))
+        .await
+        .unwrap();
+    loop {
+        let runs = kernel_stores
+            .runs
+            .list(RunFilter::default().queue("background"))
+            .await
+            .unwrap();
+        if runs
+            .iter()
+            .any(|run| run.target == "growth" && run.state != RunState::Queued)
+        {
+            assert!(
+                since.elapsed() < BUDGET,
+                "wake to claim must stay within {BUDGET:?}"
+            );
+            break;
+        }
+        assert!(since.elapsed() < BUDGET, "the wake must claim a run");
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    kernel.stop().await.unwrap();
+}
+
+/// Two kernels over two data dirs do not share work: a signal filed in one
+/// cards there and leaves the other empty.
+#[tokio::test]
+async fn two_kernels_stay_partitioned() {
+    use adk_core::{DurableRunStore, RunFilter};
+
+    let dir_a = tempfile::tempdir().unwrap();
+    let (config_a, stores_a, kernel_a) = setup(&dir_a).await;
+    let record = prefile(&kernel_a, &config_a, gap_kind()).await;
+    let model_a = scripted(vec![
+        adk_model::ScriptedResponse::function_call("next_gap", serde_json::json!({})),
+        adk_model::ScriptedResponse::function_call(
+            "file_content_draft",
+            serde_json::json!({
+                "page_slug": "contact",
+                "facts": [{"id": "hours", "text": "Open Saturday 9 to 1."}],
+                "rationale": "visitors keep asking",
+                "gap_record": record,
+            }),
+        ),
+        adk_model::ScriptedResponse::text("draft filed"),
+    ]);
+    let (kernel_a, sink_a) = start_kernel(&config_a, &stores_a, &kernel_a, model_a, None).await;
+
+    let dir_b = tempfile::tempdir().unwrap();
+    let (config_b, stores_b, kernel_stores_b) = setup(&dir_b).await;
+    let (kernel_b, _) = start_kernel(
+        &config_b,
+        &stores_b,
+        &kernel_stores_b,
+        agents::build_model(&config_b).unwrap(),
+        None,
+    )
+    .await;
+
+    let since = Instant::now();
+    sink_a
+        .emit(envelope(&config_a.site, gap_kind(), "concierge"))
+        .await
+        .unwrap();
+    await_card(&stores_a, &config_a.site, "Content Editor", since).await;
+
+    assert!(
+        stores_b
+            .cards
+            .list_open(&config_b.site)
+            .await
+            .unwrap()
+            .is_empty(),
+        "no cards leak across sites"
+    );
+    assert!(
+        kernel_stores_b
+            .runs
+            .list(RunFilter::default())
+            .await
+            .unwrap()
+            .is_empty(),
+        "no runs leak across sites"
+    );
+    kernel_a.stop().await.unwrap();
+    kernel_b.stop().await.unwrap();
+}
