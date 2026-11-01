@@ -182,3 +182,16 @@ fn http_fetch_refuses_errors() {
     let result = HttpFetch::default().fetch("http://127.0.0.1:1/nothing-here");
     assert!(result.is_err());
 }
+
+#[test]
+fn open_fetcher_fails_fast_without_network() {
+    let fetcher = HttpFetch::default().with_breaker(std::sync::Arc::new(
+        agentrix_site_defense::Breaker::new("fetch-test", 1, std::time::Duration::from_secs(60)),
+    ));
+    assert!(fetcher.fetch("http://127.0.0.1:1/nothing").is_err());
+    let err = fetcher
+        .fetch("http://127.0.0.1:1/nothing")
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("circuit open"), "{err}");
+}

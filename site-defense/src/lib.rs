@@ -8,10 +8,12 @@
 //! cross-site reads and serves with an audit trail, closing the loop the
 //! per-site stores leave open.
 
+pub mod breaker;
 pub mod guard;
 pub mod isolation;
 pub mod probe;
 
+pub use breaker::{Breaker, BreakerCall, Open};
 pub use guard::{Freeze, Guard, GuardDecision, GuardError, QuietHours};
 pub use isolation::{Denial, Isolation};
 pub use probe::{

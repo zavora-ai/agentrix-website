@@ -6,10 +6,11 @@
 //! pairs each caption with the account's brand image; [`MastodonSocial`] posts
 //! text to any instance's statuses API.
 
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use agentrix_site_concierge::{LeadSignal, ReviewSignal};
+use agentrix_site_defense::{Breaker, BreakerCall};
 use agentrix_site_inbox::{Card, CardKind, CardStore, NewCard, StoreError};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -69,6 +70,32 @@ fn http() -> Result<reqwest::blocking::Client, SocialError> {
         .map_err(|e| SocialError::Post(e.to_string()))
 }
 
+/// Sends through `breaker`: timeouts, refused connections, 429s and 5xx retry
+/// three times with backoff; anything else — including the network's own 4xx —
+/// returns at once. An open circuit fails without touching the network.
+fn guarded(
+    breaker: &Breaker,
+    build: impl Fn() -> reqwest::blocking::RequestBuilder,
+) -> Result<reqwest::blocking::Response, SocialError> {
+    breaker
+        .call(
+            3,
+            Duration::from_millis(500),
+            || build().send().and_then(|answer| answer.error_for_status()),
+            |error: &reqwest::Error| {
+                error.is_timeout()
+                    || error.is_connect()
+                    || error
+                        .status()
+                        .is_some_and(|status| status.is_server_error() || status.as_u16() == 429)
+            },
+        )
+        .map_err(|call| match call {
+            BreakerCall::Open(open) => SocialError::Post(open.to_string()),
+            BreakerCall::Error(error) => SocialError::Post(error.to_string()),
+        })
+}
+
 /// Publishes through the Instagram Content Publishing API: a media container with
 /// the caption over the account's brand image, then the publish call. Reads
 /// `META_IG_USER_ID`, `META_IG_ACCESS_TOKEN` and `META_IG_IMAGE_URL` when built
@@ -78,7 +105,9 @@ pub struct InstagramSocial {
     user_id: String,
     token: String,
     image_url: String,
+    api_base: String,
     client: reqwest::blocking::Client,
+    breaker: Arc<Breaker>,
 }
 
 impl InstagramSocial {
@@ -92,8 +121,22 @@ impl InstagramSocial {
             user_id: user_id.into(),
             token: token.into(),
             image_url: image_url.into(),
+            api_base: "https://graph.facebook.com/v21.0".into(),
             client: http()?,
+            breaker: Arc::new(Breaker::new("instagram", 5, Duration::from_secs(60))),
         })
+    }
+
+    /// Points the poster at another API base (proxies, mocks).
+    pub fn with_api_base(mut self, base: impl Into<String>) -> Self {
+        self.api_base = base.into();
+        self
+    }
+
+    /// Guards the poster with `breaker` instead of the default.
+    pub fn with_breaker(mut self, breaker: Arc<Breaker>) -> Self {
+        self.breaker = breaker;
+        self
     }
 
     /// A poster from the environment, or what is missing.
@@ -110,52 +153,39 @@ impl InstagramSocial {
 
     /// The media-container endpoint: pure, so tests pin it without posting.
     pub fn media_url(&self) -> String {
-        format!("https://graph.facebook.com/v21.0/{}/media", self.user_id)
+        format!("{}/{}/media", self.api_base, self.user_id)
     }
 
     /// The publish endpoint: pure, so tests pin it without posting.
     pub fn publish_url(&self) -> String {
-        format!(
-            "https://graph.facebook.com/v21.0/{}/media_publish",
-            self.user_id
-        )
+        format!("{}/{}/media_publish", self.api_base, self.user_id)
     }
 }
 
 impl SocialPoster for InstagramSocial {
     fn post(&self, status: &str) -> Result<String, SocialError> {
         let failed = |e: reqwest::Error| SocialError::Post(e.to_string());
-        let container: serde_json::Value = self
-            .client
-            .post(self.media_url())
-            .form(&[
+        let container: serde_json::Value = guarded(self.breaker.as_ref(), || {
+            self.client.post(self.media_url()).form(&[
                 ("image_url", self.image_url.as_str()),
                 ("caption", status),
                 ("access_token", self.token.as_str()),
             ])
-            .send()
-            .map_err(failed)?
-            .error_for_status()
-            .map_err(failed)?
-            .json()
-            .map_err(failed)?;
+        })?
+        .json()
+        .map_err(failed)?;
         let creation = container
             .get("id")
             .and_then(serde_json::Value::as_str)
             .ok_or_else(|| SocialError::Post("instagram returned no container id".into()))?;
-        let published: serde_json::Value = self
-            .client
-            .post(self.publish_url())
-            .form(&[
+        let published: serde_json::Value = guarded(self.breaker.as_ref(), || {
+            self.client.post(self.publish_url()).form(&[
                 ("creation", creation),
                 ("access_token", self.token.as_str()),
             ])
-            .send()
-            .map_err(failed)?
-            .error_for_status()
-            .map_err(failed)?
-            .json()
-            .map_err(failed)?;
+        })?
+        .json()
+        .map_err(failed)?;
         published
             .get("id")
             .and_then(serde_json::Value::as_str)
@@ -171,6 +201,7 @@ pub struct MastodonSocial {
     instance: String,
     token: String,
     client: reqwest::blocking::Client,
+    breaker: Arc<Breaker>,
 }
 
 impl MastodonSocial {
@@ -180,7 +211,14 @@ impl MastodonSocial {
             instance: instance.into(),
             token: token.into(),
             client: http()?,
+            breaker: Arc::new(Breaker::new("mastodon", 5, Duration::from_secs(60))),
         })
+    }
+
+    /// Guards the poster with `breaker` instead of the default.
+    pub fn with_breaker(mut self, breaker: Arc<Breaker>) -> Self {
+        self.breaker = breaker;
+        self
     }
 
     /// A poster from the environment, or what is missing.
@@ -200,17 +238,14 @@ impl MastodonSocial {
 impl SocialPoster for MastodonSocial {
     fn post(&self, status: &str) -> Result<String, SocialError> {
         let failed = |e: reqwest::Error| SocialError::Post(e.to_string());
-        let answer: serde_json::Value = self
-            .client
-            .post(self.status_url())
-            .bearer_auth(&self.token)
-            .form(&[("status", status)])
-            .send()
-            .map_err(failed)?
-            .error_for_status()
-            .map_err(failed)?
-            .json()
-            .map_err(failed)?;
+        let answer: serde_json::Value = guarded(self.breaker.as_ref(), || {
+            self.client
+                .post(self.status_url())
+                .bearer_auth(&self.token)
+                .form(&[("status", status)])
+        })?
+        .json()
+        .map_err(failed)?;
         answer
             .get("id")
             .and_then(|id| {

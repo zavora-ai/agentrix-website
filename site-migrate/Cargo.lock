@@ -3,6 +3,22 @@
 version = 4
 
 [[package]]
+name = "agentrix-site-defense"
+version = "0.1.0"
+dependencies = [
+ "agentrix-site-edge",
+ "agentrix-site-inbox",
+ "agentrix-site-release",
+ "chrono",
+ "serde",
+ "serde_json",
+ "sqlx",
+ "thiserror",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "agentrix-site-edge"
 version = "0.1.0"
 dependencies = [
@@ -35,6 +51,7 @@ dependencies = [
 name = "agentrix-site-migrate"
 version = "0.1.0"
 dependencies = [
+ "agentrix-site-defense",
  "agentrix-site-edge",
  "agentrix-site-inbox",
  "agentrix-site-release",

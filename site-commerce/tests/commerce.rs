@@ -226,3 +226,33 @@ async fn wrong_card_refuses_and_failure_releases_for_retry() {
     let (_, spent, _) = growth.budget("demo").await.unwrap();
     assert_eq!(spent, 1_500);
 }
+
+#[test]
+fn open_provider_fails_fast_without_network() {
+    use agentrix_site_commerce::PaymentProvider as _;
+    use agentrix_site_defense::Breaker;
+    let provider = StripeProvider::new("test")
+        .unwrap()
+        .with_api_base("http://127.0.0.1:1")
+        .with_breaker(std::sync::Arc::new(Breaker::new(
+            "stripe-test",
+            1,
+            std::time::Duration::from_secs(60),
+        )));
+    let intent = PaymentIntent {
+        id: "pi-test".into(),
+        site: "demo".into(),
+        amount_micro: 50_000,
+        currency: "USD".into(),
+        purpose: "test".into(),
+        payer_ref: "p".into(),
+        idempotency_key: "k".into(),
+        payment_method: Some("pm_test".into()),
+        state: agentrix_site_commerce::IntentState::Held,
+        card_id: "card-test".into(),
+        charge_id: None,
+    };
+    assert!(provider.charge(&intent).is_err());
+    let err = provider.charge(&intent).unwrap_err().to_string();
+    assert!(err.contains("circuit open"), "{err}");
+}

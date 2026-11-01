@@ -196,3 +196,20 @@ fn mastodon_live_post() {
         .unwrap();
     assert!(!id.is_empty());
 }
+
+#[test]
+fn open_poster_fails_fast_without_network() {
+    use agentrix_site_defense::Breaker;
+    use std::sync::Arc;
+    use std::time::Duration;
+    let poster = MastodonSocial::new("http://127.0.0.1:1", "token")
+        .unwrap()
+        .with_breaker(Arc::new(Breaker::new(
+            "mastodon-test",
+            1,
+            Duration::from_secs(60),
+        )));
+    assert!(poster.post("hi").is_err());
+    let err = poster.post("hi").unwrap_err().to_string();
+    assert!(err.contains("circuit open"), "{err}");
+}

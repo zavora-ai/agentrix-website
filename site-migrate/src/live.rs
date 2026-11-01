@@ -6,7 +6,10 @@
 //! the public web serves.
 
 use std::io::Read as _;
+use std::sync::Arc;
 use std::time::Duration;
+
+use agentrix_site_defense::{Breaker, BreakerCall};
 
 use crate::crawl::{CrawlError, Fetch};
 
@@ -16,6 +19,7 @@ pub const MAX_BODY_BYTES: usize = 5 * 1024 * 1024;
 /// Fetches public URLs over HTTP.
 pub struct HttpFetch {
     client: reqwest::blocking::Client,
+    breaker: Arc<Breaker>,
 }
 
 impl HttpFetch {
@@ -29,7 +33,16 @@ impl HttpFetch {
                 url: String::new(),
                 reason: e.to_string(),
             })?;
-        Ok(Self { client })
+        Ok(Self {
+            client,
+            breaker: Arc::new(Breaker::new("http-fetch", 5, Duration::from_secs(60))),
+        })
+    }
+
+    /// Guards the fetcher with `breaker` instead of the default.
+    pub fn with_breaker(mut self, breaker: Arc<Breaker>) -> Self {
+        self.breaker = breaker;
+        self
     }
 }
 
@@ -46,12 +59,30 @@ impl Fetch for HttpFetch {
             reason,
         };
         let response = self
-            .client
-            .get(url)
-            .send()
-            .map_err(|e| failed(e.to_string()))?
-            .error_for_status()
-            .map_err(|e| failed(e.to_string()))?;
+            .breaker
+            .call(
+                3,
+                Duration::from_millis(500),
+                || {
+                    self.client
+                        .get(url)
+                        .send()
+                        .and_then(|answer| answer.error_for_status())
+                        .map_err(|e| {
+                            let retryable = e.is_timeout()
+                                || e.is_connect()
+                                || e.status().is_some_and(|status| {
+                                    status.is_server_error() || status.as_u16() == 429
+                                });
+                            (e.to_string(), retryable)
+                        })
+                },
+                |(_, retryable): &(String, bool)| *retryable,
+            )
+            .map_err(|call| match call {
+                BreakerCall::Open(open) => failed(open.to_string()),
+                BreakerCall::Error((reason, _)) => failed(reason),
+            })?;
         let mut body = Vec::new();
         response
             .take((MAX_BODY_BYTES + 1) as u64)
