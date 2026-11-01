@@ -39,6 +39,8 @@ pub struct ServeConfig {
     pub baseten_model: String,
     /// Baseten-compatible base URL.
     pub baseten_base_url: String,
+    /// Max output tokens per agent call (Baseten Muse Spark Open allows 1,048,576).
+    pub max_tokens: u32,
 }
 
 impl ServeConfig {
@@ -55,6 +57,10 @@ impl ServeConfig {
                 .unwrap_or_else(|_| "meta-models/muse-spark-open-1026".into()),
             baseten_base_url: std::env::var("BASETEN_BASE_URL")
                 .unwrap_or_else(|_| "https://inference.baseten.co/v1".into()),
+            max_tokens: std::env::var("BASETEN_MAX_TOKENS")
+                .ok()
+                .and_then(|value| value.parse().ok())
+                .unwrap_or(16_384),
         }
     }
 }

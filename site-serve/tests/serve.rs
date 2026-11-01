@@ -19,6 +19,7 @@ fn config(dir: &tempfile::TempDir) -> ServeConfig {
         baseten_key: None,
         baseten_model: "scripted".into(),
         baseten_base_url: "http://localhost/".into(),
+        max_tokens: 16_384,
     }
 }
 

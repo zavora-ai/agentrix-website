@@ -37,7 +37,7 @@ pub fn build_model(config: &ServeConfig) -> anyhow::Result<Arc<dyn Llm>> {
     let client = MuseClient::new(
         MuseConfig::new(key, &config.baseten_model)
             .with_base_url(&config.baseten_base_url)
-            .with_max_tokens(2048),
+            .with_max_tokens(config.max_tokens),
     )
     .map_err(|e| anyhow::anyhow!("{e}"))?;
     Ok(Arc::new(client))

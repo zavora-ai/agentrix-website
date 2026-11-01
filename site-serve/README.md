@@ -19,5 +19,5 @@ BASETEN_API_KEY=... cargo run -p agentrix-site-serve
 
 Environment: `BASETEN_API_KEY` (required unless `--dry-run`), `BASETEN_MODEL`
 (default `meta-models/muse-spark-open-1026`), `BASETEN_BASE_URL` (default
-`https://inference.baseten.co/v1`), `QUIET_START_MIN`/`QUIET_END_MIN`,
+`https://inference.baseten.co/v1`), `BASETEN_MAX_TOKENS` (default 16384, model allows 1048576), `QUIET_START_MIN`/`QUIET_END_MIN`,
 `CERT_EXPIRY_DAYS`/`DOMAIN_EXPIRY_DAYS`/`BACKUP_AGE_DAYS`/`WATCH_ADVISORIES`.
