@@ -3,11 +3,13 @@
 //! [`serve`] opens the product stores and the kernel stores in one data dir, seeds
 //! the demo site through the LaunchGate when nothing is served yet, hosts the
 //! agent teams on the kernel ([`agents`]), registers the guarded workflows
-//! ([`workflows`]), starts the kernel, and serves the edge from the release the
+//! ([`workflows`]), attaches the signal intake ([`signals`]), starts the kernel,
+//! and serves the edge from the release the
 //! store calls current. The agents run on Muse through Baseten; `--dry-run`
 //! scripts the model for offline runs.
 
 pub mod agents;
+pub mod signals;
 pub mod workflows;
 
 use std::path::{Path, PathBuf};
@@ -192,7 +194,15 @@ pub async fn serve(config: &ServeConfig) -> anyhow::Result<()> {
     sessions.migrate().await.map_err(anyhow_err)?;
 
     let model = agents::build_model(config)?;
-    let runners = agents::build_runners(&config.app, &config.site, &stores, sessions, model)?;
+    let kernel_stores = workflows::open_kernel_stores(&config.data).await?;
+    let runners = agents::build_runners(
+        &config.app,
+        &config.site,
+        &stores,
+        sessions,
+        model,
+        kernel_stores.signals.clone(),
+    )?;
     let workflows = Arc::new(workflows::SiteWorkflows::new(
         config.site.clone(),
         current.clone(),
@@ -202,11 +212,30 @@ pub async fn serve(config: &ServeConfig) -> anyhow::Result<()> {
         stores.freeze.clone(),
     ));
 
-    let kernel = workflows::build_kernel(&config.app, &config.data, runners, workflows).await?;
+    let kernel = workflows::build_kernel(
+        &config.app,
+        &config.data,
+        &kernel_stores,
+        runners,
+        workflows,
+    )
+    .await?;
     kernel.start().await.map_err(anyhow_err)?;
     tracing::info!(app = %config.app, "kernel started");
 
-    let app = router_on(&current, RateLimit::default());
+    let partition: adk_kernel::PartitionId = format!("{}.back-office", config.app).into();
+    let sink = adk_kernel::charter::SignalSink::for_kernel(
+        &kernel,
+        kernel_stores.signals.clone(),
+        partition,
+    );
+    let intake = Arc::new(signals::Intake {
+        site: config.site.clone(),
+        corpus: stores.corpus.clone(),
+        sink,
+    });
+
+    let app = router_on(&current, RateLimit::default()).merge(signals::intake_routes(intake));
     let listener = tokio::net::TcpListener::bind(&config.addr)
         .await
         .map_err(anyhow_err)?;

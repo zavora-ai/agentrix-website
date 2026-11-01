@@ -2,16 +2,20 @@
 //! into the product stores, and a Sequential outreach team.
 //!
 //! Three runners cover the four agent targets: the Growth runner closes content
-//! gaps (the reviews trigger shares it in v1, reading its job from the run
-//! input), the Revenue runner is the qualifier-to-drafter outreach team, and the
-//! Steward runner answers with corpus retrieval. Every agent call files cards or
-//! quotes chunks — nothing publishes unwatched. Tools carry JSON schemas so the
-//! model argues correctly, and every runner carries a tool-call budget.
+//! gaps (the reviews trigger shares it, reading its job from the run input),
+//! the Revenue runner is the qualifier-to-drafter outreach team, and the
+//! Steward runner answers escalations with corpus retrieval. The signal-woken
+//! runners pull their pending work from the kernel signal store (`next_*`
+//! tools) and acknowledge each record by filing its held card — nothing
+//! publishes unwatched. Tools carry JSON schemas so the model argues
+//! correctly, and every runner carries a tool-call budget.
 
 use std::sync::Arc;
 
 use adk_agent::{LlmAgentBuilder, SequentialAgent};
 use adk_core::{Agent, Llm, RunBudget};
+use adk_kernel::PartitionId;
+use adk_kernel::charter::{SignalFilter, SignalStore};
 use adk_model::muse::{MuseClient, MuseConfig};
 use adk_runner::Runner;
 use adk_tool::FunctionTool;
@@ -46,6 +50,130 @@ pub fn build_model(config: &ServeConfig) -> anyhow::Result<Arc<dyn Llm>> {
     Ok(Arc::new(client))
 }
 
+/// No arguments: the pending-work tools take none.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct NoArgs {}
+
+/// A tool reading the oldest open signal record of one kind: the job's pending
+/// work. Returns the record's payload, or `{"empty": true}` when nothing waits.
+/// Reading never acknowledges; the filing tool closes the record it handled.
+pub fn next_tool(
+    signals: Arc<dyn SignalStore>,
+    partition: PartitionId,
+    kind: &'static str,
+    name: &'static str,
+    description: &'static str,
+) -> FunctionTool {
+    FunctionTool::new(
+        name,
+        description,
+        move |_ctx: Arc<dyn adk_core::ToolContext>, _args: serde_json::Value| {
+            let signals = signals.clone();
+            let partition = partition.clone();
+            async move {
+                let filter = SignalFilter::default()
+                    .partition(partition)
+                    .kind(kind)
+                    .open(true)
+                    .limit(1);
+                let records = signals
+                    .list(&filter)
+                    .await
+                    .map_err(|e| adk_core::AdkError::config(e.to_string()))?;
+                let Some(record) = records.into_iter().next() else {
+                    return Ok(serde_json::json!({ "empty": true }));
+                };
+                payload(kind, &record.id, &record.signal.kind).ok_or_else(|| {
+                    adk_core::AdkError::config(format!(
+                        "signal record {} is not a {kind}",
+                        record.id
+                    ))
+                })
+            }
+        },
+    )
+    .with_parameters_schema::<NoArgs>()
+    .with_read_only(true)
+}
+
+/// The `next_*` payload for one open record: its id plus the kind's fields.
+fn payload(kind: &str, record: &str, signal: &awp_types::SignalKind) -> Option<serde_json::Value> {
+    use awp_types::SignalKind as Kind;
+    match (kind, signal) {
+        (
+            "content_gap",
+            Kind::ContentGap {
+                topic,
+                question_count,
+                samples,
+            },
+        ) => Some(serde_json::json!({
+            "record": record,
+            "topic": topic.as_str(),
+            "count": question_count,
+            "samples": samples.iter().map(|s| s.as_str()).collect::<Vec<_>>(),
+        })),
+        (
+            "review_seen",
+            Kind::ReviewSeen {
+                platform,
+                rating,
+                excerpt,
+            },
+        ) => Some(serde_json::json!({
+            "record": record,
+            "platform": platform,
+            "rating": rating,
+            "excerpt": excerpt.as_str(),
+        })),
+        (
+            "lead_captured",
+            Kind::LeadCaptured {
+                lead_ref, source, ..
+            },
+        ) => Some(serde_json::json!({
+            "record": record,
+            "lead_ref": lead_ref.0,
+            "channel": channel_name(source),
+        })),
+        (
+            "support_escalation",
+            Kind::SupportEscalation {
+                reason,
+                contact_ref,
+            },
+        ) => Some(serde_json::json!({
+            "record": record,
+            "reason": reason.0,
+            "contact": contact_ref.0,
+        })),
+        _ => None,
+    }
+}
+
+/// The wire name of a channel: its serialized form, or `other`.
+fn channel_name(channel: &awp_types::Channel) -> String {
+    serde_json::to_value(channel)
+        .ok()
+        .and_then(|value| value.as_str().map(str::to_string))
+        .unwrap_or_else(|| "other".to_string())
+}
+
+/// Closes the handled signal record, if any: filing the card acknowledges the
+/// work, so the next wake reads what is still open.
+async fn acknowledge(
+    signals: &Arc<dyn SignalStore>,
+    record: Option<&str>,
+) -> Result<(), adk_core::AdkError> {
+    if let Some(record) = record {
+        signals
+            .close(record)
+            .await
+            .map_err(|e| adk_core::AdkError::config(e.to_string()))?;
+    }
+    Ok(())
+}
+
 /// One proposed fact.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct FactArg {
@@ -64,15 +192,23 @@ pub struct FileDraftArgs {
     pub facts: Vec<FactArg>,
     /// Why the draft exists.
     pub rationale: String,
+    /// The gap record handled, closed on filing.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gap_record: Option<String>,
 }
 
 /// A tool filing content-draft cards: the Content Editor's hands.
-pub fn file_draft_tool(cards: Arc<CardStore>, site: String) -> FunctionTool {
+pub fn file_draft_tool(
+    cards: Arc<CardStore>,
+    signals: Arc<dyn SignalStore>,
+    site: String,
+) -> FunctionTool {
     FunctionTool::new(
         "file_content_draft",
         "Files a held content draft for a page. Always held for approval; never publishes.",
         move |_ctx: Arc<dyn adk_core::ToolContext>, args: serde_json::Value| {
             let cards = cards.clone();
+            let signals = signals.clone();
             let site = site.clone();
             async move {
                 let parsed: FileDraftArgs = serde_json::from_value(args.clone())
@@ -88,11 +224,153 @@ pub fn file_draft_tool(cards: Arc<CardStore>, site: String) -> FunctionTool {
                     ))
                     .await
                     .map_err(|e| adk_core::AdkError::config(e.to_string()))?;
+                acknowledge(&signals, parsed.gap_record.as_deref()).await?;
                 Ok(serde_json::json!({ "card": card.id }))
             }
         },
     )
     .with_parameters_schema::<FileDraftArgs>()
+}
+
+/// Arguments for filing a reply draft.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct FileReplyArgs {
+    /// The platform the review appeared on.
+    pub platform: String,
+    /// The drafted reply, in the owner's voice.
+    pub reply: String,
+    /// The review record handled, closed on filing.
+    pub review_record: String,
+}
+
+/// A tool filing reply drafts: the Reputation Manager's hands. Held, like every
+/// draft; posting is a separate approved act.
+pub fn file_reply_draft_tool(
+    cards: Arc<CardStore>,
+    signals: Arc<dyn SignalStore>,
+    site: String,
+) -> FunctionTool {
+    FunctionTool::new(
+        "file_reply_draft",
+        "Files a held reply draft for a seen review. Never posts; the owner approves first.",
+        move |_ctx: Arc<dyn adk_core::ToolContext>, args: serde_json::Value| {
+            let cards = cards.clone();
+            let signals = signals.clone();
+            let site = site.clone();
+            async move {
+                let parsed: FileReplyArgs = serde_json::from_value(args.clone())
+                    .map_err(|e| adk_core::AdkError::config(format!("bad reply args: {e}")))?;
+                let title = format!("Reputation Manager: reply draft for {}", parsed.platform);
+                let card = cards
+                    .file(NewCard::new(
+                        site.as_str(),
+                        CardKind::Draft,
+                        "Reputation Manager",
+                        title,
+                        args,
+                    ))
+                    .await
+                    .map_err(|e| adk_core::AdkError::config(e.to_string()))?;
+                acknowledge(&signals, Some(parsed.review_record.as_str())).await?;
+                Ok(serde_json::json!({ "card": card.id }))
+            }
+        },
+    )
+    .with_parameters_schema::<FileReplyArgs>()
+}
+
+/// Arguments for filing a follow-up draft.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct FileFollowupArgs {
+    /// The lead reference from `next_lead`.
+    pub lead_ref: String,
+    /// The channel the lead came over.
+    pub channel: String,
+    /// The drafted follow-up message.
+    pub message: String,
+    /// The lead record handled, closed on filing.
+    pub lead_record: String,
+}
+
+/// A tool filing follow-up drafts: the Sales Rep's hands. Held; outreach never
+/// contacts unwatched.
+pub fn file_followup_tool(
+    cards: Arc<CardStore>,
+    signals: Arc<dyn SignalStore>,
+    site: String,
+) -> FunctionTool {
+    FunctionTool::new(
+        "file_followup",
+        "Files a held follow-up draft for a qualified lead. Never sends; the owner approves first.",
+        move |_ctx: Arc<dyn adk_core::ToolContext>, args: serde_json::Value| {
+            let cards = cards.clone();
+            let signals = signals.clone();
+            let site = site.clone();
+            async move {
+                let parsed: FileFollowupArgs = serde_json::from_value(args.clone())
+                    .map_err(|e| adk_core::AdkError::config(format!("bad followup args: {e}")))?;
+                let title = format!("Sales Rep: follow up with lead {}", parsed.lead_ref);
+                let card = cards
+                    .file(NewCard::new(
+                        site.as_str(),
+                        CardKind::Draft,
+                        "Sales Rep",
+                        title,
+                        args,
+                    ))
+                    .await
+                    .map_err(|e| adk_core::AdkError::config(e.to_string()))?;
+                acknowledge(&signals, Some(parsed.lead_record.as_str())).await?;
+                Ok(serde_json::json!({ "card": card.id }))
+            }
+        },
+    )
+    .with_parameters_schema::<FileFollowupArgs>()
+}
+
+/// Arguments for filing an answer draft.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct FileAnswerArgs {
+    /// The grounded answer.
+    pub answer: String,
+    /// The escalation record handled, closed on filing.
+    pub escalation_record: String,
+}
+
+/// A tool filing answer drafts: the Chief of Staff's hands. The answer quotes
+/// the corpus; the owner approves before it reaches the visitor.
+pub fn file_answer_draft_tool(
+    cards: Arc<CardStore>,
+    signals: Arc<dyn SignalStore>,
+    site: String,
+) -> FunctionTool {
+    FunctionTool::new(
+        "file_answer_draft",
+        "Files a held answer draft for an escalation. Never sends; the owner approves first.",
+        move |_ctx: Arc<dyn adk_core::ToolContext>, args: serde_json::Value| {
+            let cards = cards.clone();
+            let signals = signals.clone();
+            let site = site.clone();
+            async move {
+                let parsed: FileAnswerArgs = serde_json::from_value(args.clone())
+                    .map_err(|e| adk_core::AdkError::config(format!("bad answer args: {e}")))?;
+                let title = "Chief of Staff: answer draft for an escalation".to_string();
+                let card = cards
+                    .file(NewCard::new(
+                        site.as_str(),
+                        CardKind::Draft,
+                        "Chief of Staff",
+                        title,
+                        args,
+                    ))
+                    .await
+                    .map_err(|e| adk_core::AdkError::config(e.to_string()))?;
+                acknowledge(&signals, Some(parsed.escalation_record.as_str())).await?;
+                Ok(serde_json::json!({ "card": card.id }))
+            }
+        },
+    )
+    .with_parameters_schema::<FileAnswerArgs>()
 }
 
 /// Arguments for quoting the corpus.
@@ -133,26 +411,60 @@ pub fn retrieve_tool(corpus: Arc<Corpus>, site: String) -> FunctionTool {
 }
 
 /// Builds the three hosted runners: Growth (content + reviews), Revenue (the
-/// outreach team), Steward (support with retrieval). Every runner is tool-call
-/// budgeted so a confused model cannot loop.
+/// outreach team), Steward (support with retrieval). Every runner pulls pending
+/// work from the signal store and is tool-call budgeted so a confused model
+/// cannot loop.
 pub fn build_runners(
     app: &str,
     site: &str,
     stores: &ProductStores,
     sessions: Arc<dyn adk_session::SessionService>,
     model: Arc<dyn Llm>,
+    signals: Arc<dyn SignalStore>,
 ) -> anyhow::Result<Vec<(String, Arc<Runner>)>> {
+    let partition: PartitionId = format!("{app}.back-office").into();
     let growth_agent = LlmAgentBuilder::new("content_editor")
         .description("Closes content gaps with held drafts")
         .instruction(
-            "You are the Content Editor. The run input carries content gaps. For each gap, \
-             call file_content_draft with page_slug, facts (id + text pairs answering the gap), \
-             and rationale. Draft only; approval is someone else's job.",
+            "You close content gaps and draft review replies. Read the run input's `job`. \
+             For `freshness`: call next_gap. On `{\"empty\": true}` reply NO_GAPS and stop. \
+             Else call file_content_draft with page_slug, facts (id + text pairs answering \
+             the gap), rationale, and the gap_record. For `social`: call next_review. On \
+             `{\"empty\": true}` reply NO_REVIEWS and stop. Else call file_reply_draft with \
+             platform, reply, and the review_record. Draft only; approval is someone else's job.",
         )
         .model(model.clone())
         .tool(
-            Arc::new(file_draft_tool(stores.cards.clone(), site.to_string()))
-                as Arc<dyn adk_core::Tool>,
+            Arc::new(next_tool(
+                signals.clone(),
+                partition.clone(),
+                "content_gap",
+                "next_gap",
+                "Reads the oldest open content gap: record id, topic, count, samples. `{\"empty\": true}` when none waits.",
+            )) as Arc<dyn adk_core::Tool>,
+        )
+        .tool(
+            Arc::new(file_draft_tool(
+                stores.cards.clone(),
+                signals.clone(),
+                site.to_string(),
+            )) as Arc<dyn adk_core::Tool>,
+        )
+        .tool(
+            Arc::new(next_tool(
+                signals.clone(),
+                partition.clone(),
+                "review_seen",
+                "next_review",
+                "Reads the oldest open review sighting: record id, platform, rating, excerpt. `{\"empty\": true}` when none waits.",
+            )) as Arc<dyn adk_core::Tool>,
+        )
+        .tool(
+            Arc::new(file_reply_draft_tool(
+                stores.cards.clone(),
+                signals.clone(),
+                site.to_string(),
+            )) as Arc<dyn adk_core::Tool>,
         )
         .build()
         .map_err(|e| anyhow::anyhow!("{e}"))?;
@@ -167,19 +479,37 @@ pub fn build_runners(
     let qualifier = LlmAgentBuilder::new("lead_qualifier")
         .description("Qualifies one lead")
         .instruction(
-            "Given the lead JSON in the run input, reply with exactly one line: \
-             QUALIFIED yes/no — one reason.",
+            "Call next_lead. On `{\"empty\": true}` reply NO_LEADS and stop. Else reply with \
+             exactly one line: QUALIFIED yes/no, the lead_ref, the channel, the lead_record, \
+             Example: QUALIFIED yes lead-9 email rec-4 — asked for pricing.",
         )
         .model(model.clone())
+        .tool(
+            Arc::new(next_tool(
+                signals.clone(),
+                partition.clone(),
+                "lead_captured",
+                "next_lead",
+                "Reads the oldest open captured lead: record id, lead_ref, channel. `{\"empty\": true}` when none waits.",
+            )) as Arc<dyn adk_core::Tool>,
+        )
         .build()
         .map_err(|e| anyhow::anyhow!("{e}"))?;
     let drafter = LlmAgentBuilder::new("followup_drafter")
         .description("Drafts the follow-up for a qualified lead")
         .instruction(
-            "Given the qualification line, draft a short personal follow-up message. \
-             Draft only; outreach never contacts unwatched.",
+            "Given the qualification line, call file_followup with its lead_ref, channel, your \
+             the lead_record it carries, and your short personal message. On NO_LEADS reply NOTHING_TO_DO and stop. Draft only; outreach never \
+             contacts unwatched.",
         )
         .model(model.clone())
+        .tool(
+            Arc::new(file_followup_tool(
+                stores.cards.clone(),
+                signals.clone(),
+                site.to_string(),
+            )) as Arc<dyn adk_core::Tool>,
+        )
         .build()
         .map_err(|e| anyhow::anyhow!("{e}"))?;
     let outreach = SequentialAgent::new(
@@ -200,14 +530,32 @@ pub fn build_runners(
     let steward = LlmAgentBuilder::new("support_steward")
         .description("Answers escalations from the site's own pages")
         .instruction(
-            "You are the Chief of Staff's support desk. For the escalated question in the run \
-             input, call retrieve_chunks first, then answer quoting the chunks. If nothing grounds \
-             the answer, say what is missing instead of guessing.",
+            "You are the Chief of Staff's support desk. Call next_escalation. On \
+             `{\"empty\": true}` reply NO_ESCALATIONS and stop. Else call retrieve_chunks for \
+             the reason, then file_answer_draft with the grounded answer quoting the chunks \
+             and the escalation_record. If nothing grounds the answer, say what is missing \
+             instead of guessing.",
         )
         .model(model)
         .tool(
+            Arc::new(next_tool(
+                signals.clone(),
+                partition.clone(),
+                "support_escalation",
+                "next_escalation",
+                "Reads the oldest open escalation: record id, reason, contact. `{\"empty\": true}` when none waits.",
+            )) as Arc<dyn adk_core::Tool>,
+        )
+        .tool(
             Arc::new(retrieve_tool(stores.corpus.clone(), site.to_string()))
                 as Arc<dyn adk_core::Tool>,
+        )
+        .tool(
+            Arc::new(file_answer_draft_tool(
+                stores.cards.clone(),
+                signals,
+                site.to_string(),
+            )) as Arc<dyn adk_core::Tool>,
         )
         .build()
         .map_err(|e| anyhow::anyhow!("{e}"))?;

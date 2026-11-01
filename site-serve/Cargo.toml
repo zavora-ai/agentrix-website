@@ -22,6 +22,7 @@ adk-runner = { path = "../../adk-rust/adk-runner" }
 adk-server = { path = "../../adk-rust/adk-server", default-features = false, features = ["background"] }
 adk-session = { path = "../../adk-rust/adk-session", features = ["sqlite"] }
 adk-tool = { path = "../../adk-rust/adk-tool" }
+awp-types = { path = "../../adk-rust/awp-types" }
 anyhow = "1.0"
 async-trait = "0.1"
 axum = { version = "0.8", features = ["macros"] }

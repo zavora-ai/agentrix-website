@@ -11,7 +11,9 @@ use std::sync::Arc;
 
 use adk_core::schedule::MissedFirePolicy;
 use adk_core::{ApprovalPolicy, ApproverSelector, NewRun, StoreApprovalService};
-use adk_kernel::charter::{KpiTracker, SiteProcessKind};
+use adk_kernel::charter::{
+    KpiTracker, SiteProcessKind, SqliteCharterStore, SqliteKpiStore, SqliteSignalStore,
+};
 use adk_kernel::{
     CronWakeSource, Kernel, KernelConfig, Partitions, SourceWatermark, SqliteAgendaStore,
     SqliteCronWatermarkStore, SqlitePartitionStore,
@@ -167,15 +169,29 @@ fn env_u32(name: &str, fallback: u32) -> u32 {
         .unwrap_or(fallback)
 }
 
-/// Builds (not starts) the site kernel: durable SQLite stores, the seven standing
-/// triggers plus the KPI tracker's nightly trigger, the hosted agent runners, and
-/// the guarded workflows.
-pub async fn build_kernel(
-    app: &str,
-    data: &Path,
-    runners: Vec<(String, Arc<Runner>)>,
-    workflows: Arc<SiteWorkflows>,
-) -> anyhow::Result<Kernel> {
+/// The kernel's durable stores, opened and migrated: the kernel runs on them and
+/// the product tools read pending signals and poll runs through the same handles.
+pub struct KernelStores {
+    /// Claimed and finished runs.
+    pub runs: Arc<adk_session::SqliteRunStore>,
+    /// Held approvals.
+    pub approvals: Arc<adk_session::SqliteApprovalStore>,
+    /// The back-office agenda.
+    pub agenda: Arc<SqliteAgendaStore>,
+    /// Partitions and their quotas.
+    pub partitions: Arc<SqlitePartitionStore>,
+    /// Cron watermarks.
+    pub watermarks: Arc<SqliteCronWatermarkStore>,
+    /// Typed signals and their counts.
+    pub signals: Arc<SqliteSignalStore>,
+    /// Committed charters.
+    pub charters: Arc<SqliteCharterStore>,
+    /// KPI series and guardrail state.
+    pub kpis: Arc<SqliteKpiStore>,
+}
+
+/// Opens and migrates every kernel store in one database under `data`.
+pub async fn open_kernel_stores(data: &Path) -> anyhow::Result<KernelStores> {
     let url = format!("sqlite://{}?mode=rwc", data.join("kernel.db").display());
     let pool = sqlx::sqlite::SqlitePoolOptions::new()
         .max_connections(8)
@@ -184,19 +200,15 @@ pub async fn build_kernel(
         .map_err(|e| anyhow::anyhow!("kernel stores: {e}"))?;
     let runs = Arc::new(adk_session::SqliteRunStore::from_pool(pool.clone()));
     runs.migrate().await.map_err(|e| anyhow::anyhow!("{e}"))?;
-    let approval_store = Arc::new(adk_session::SqliteApprovalStore::from_pool(pool.clone()));
-    approval_store
+    let approvals = Arc::new(adk_session::SqliteApprovalStore::from_pool(pool.clone()));
+    approvals
         .migrate()
         .await
         .map_err(|e| anyhow::anyhow!("{e}"))?;
-    let approvals: Arc<dyn adk_core::ApprovalService> = Arc::new(
-        StoreApprovalService::new(approval_store)
-            .with_router(ApprovalPolicy::new([ApproverSelector::human("owner")])),
-    );
     let agenda = Arc::new(SqliteAgendaStore::new(pool.clone()));
     agenda.migrate().await.map_err(|e| anyhow::anyhow!("{e}"))?;
-    let partition_store = Arc::new(SqlitePartitionStore::new(pool.clone()));
-    partition_store
+    let partitions = Arc::new(SqlitePartitionStore::new(pool.clone()));
+    partitions
         .migrate()
         .await
         .map_err(|e| anyhow::anyhow!("{e}"))?;
@@ -205,18 +217,51 @@ pub async fn build_kernel(
         .migrate()
         .await
         .map_err(|e| anyhow::anyhow!("{e}"))?;
-    let signals = Arc::new(adk_kernel::charter::SqliteSignalStore::new(pool.clone()));
+    let signals = Arc::new(SqliteSignalStore::new(pool.clone()));
     signals
         .migrate()
         .await
         .map_err(|e| anyhow::anyhow!("{e}"))?;
-    let charters = Arc::new(adk_kernel::charter::SqliteCharterStore::new(pool.clone()));
+    let charters = Arc::new(SqliteCharterStore::new(pool.clone()));
     charters
         .migrate()
         .await
         .map_err(|e| anyhow::anyhow!("{e}"))?;
-    let kpis = Arc::new(adk_kernel::charter::SqliteKpiStore::new(pool));
+    let kpis = Arc::new(SqliteKpiStore::new(pool));
     kpis.migrate().await.map_err(|e| anyhow::anyhow!("{e}"))?;
+    Ok(KernelStores {
+        runs,
+        approvals,
+        agenda,
+        partitions,
+        watermarks,
+        signals,
+        charters,
+        kpis,
+    })
+}
+
+/// Builds (not starts) the site kernel: durable SQLite stores, the seven standing
+/// triggers plus the KPI tracker's nightly trigger, the hosted agent runners, and
+/// the guarded workflows.
+pub async fn build_kernel(
+    app: &str,
+    data: &Path,
+    stores: &KernelStores,
+    runners: Vec<(String, Arc<Runner>)>,
+    workflows: Arc<SiteWorkflows>,
+) -> anyhow::Result<Kernel> {
+    let runs = stores.runs.clone();
+    let approval_store = stores.approvals.clone();
+    let approvals: Arc<dyn adk_core::ApprovalService> = Arc::new(
+        StoreApprovalService::new(approval_store)
+            .with_router(ApprovalPolicy::new([ApproverSelector::human("owner")])),
+    );
+    let agenda = stores.agenda.clone();
+    let partition_store = stores.partitions.clone();
+    let watermarks = stores.watermarks.clone();
+    let charters = stores.charters.clone();
+    let kpis = stores.kpis.clone();
 
     let site = uuid::Uuid::nil();
     let partition: adk_kernel::PartitionId = format!("{app}.back-office").into();

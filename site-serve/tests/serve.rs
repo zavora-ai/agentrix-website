@@ -134,8 +134,16 @@ async fn runners_and_kernel_build_with_every_target() {
     let sessions: Arc<dyn adk_session::SessionService> =
         Arc::new(adk_session::InMemorySessionService::new());
     let model = agents::build_model(&config).unwrap();
-    let runners =
-        agents::build_runners(&config.app, &config.site, &stores, sessions, model).unwrap();
+    let kernel_stores = workflows::open_kernel_stores(&config.data).await.unwrap();
+    let runners = agents::build_runners(
+        &config.app,
+        &config.site,
+        &stores,
+        sessions,
+        model,
+        kernel_stores.signals.clone(),
+    )
+    .unwrap();
     let targets: Vec<&str> = runners.iter().map(|(target, _)| target.as_str()).collect();
     assert_eq!(targets, vec!["growth", "revenue", "steward"]);
 
@@ -155,9 +163,15 @@ async fn runners_and_kernel_build_with_every_target() {
         stores.growth.clone(),
         stores.freeze.clone(),
     ));
-    let kernel = workflows::build_kernel(&config.app, &config.data, runners, workflows)
-        .await
-        .unwrap();
+    let kernel = workflows::build_kernel(
+        &config.app,
+        &config.data,
+        &kernel_stores,
+        runners,
+        workflows,
+    )
+    .await
+    .unwrap();
     drop(kernel);
 }
 
@@ -193,8 +207,16 @@ async fn growth_runner_files_a_draft_live() {
         .await
         .unwrap();
     let model = agents::build_model(&config).unwrap();
-    let runners =
-        agents::build_runners(&config.app, &config.site, &stores, sessions, model).unwrap();
+    let kernel_stores = workflows::open_kernel_stores(&config.data).await.unwrap();
+    let runners = agents::build_runners(
+        &config.app,
+        &config.site,
+        &stores,
+        sessions,
+        model,
+        kernel_stores.signals.clone(),
+    )
+    .unwrap();
     let growth = runners
         .iter()
         .find(|(target, _)| target == "growth")
@@ -202,8 +224,29 @@ async fn growth_runner_files_a_draft_live() {
         .1
         .clone();
 
+    let partition: adk_kernel::PartitionId = format!("{}.back-office", config.app).into();
+    let sink = adk_kernel::charter::SignalSink::new(
+        kernel_stores.signals.clone(),
+        kernel_stores.agenda.clone(),
+        partition,
+    );
+    let gap_signal = awp_types::Signal {
+        id: uuid::Uuid::new_v4(),
+        kind: awp_types::SignalKind::ContentGap {
+            topic: awp_types::Bounded::truncated("Weekend opening hours", 120),
+            question_count: 1,
+            samples: vec![awp_types::Bounded::truncated("Are you open Saturday?", 200)],
+        },
+        emitted_by: format!("urn:adk:agent:{}/concierge", config.site),
+        emitted_at: chrono::Utc::now(),
+    };
+    assert!(matches!(
+        sink.emit(gap_signal).await.unwrap(),
+        adk_kernel::charter::SignalOutcome::Filed { .. }
+    ));
     let gap = serde_json::json!({
-        "gaps": [{"topic": "Weekend opening hours", "questions": ["Are you open Saturday?"]}],
+        "job": "freshness",
+        "playbook": "freshness",
         "page_slug": "contact",
     });
     let mut events = growth

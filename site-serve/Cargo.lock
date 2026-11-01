@@ -328,6 +328,7 @@ name = "agentrix-site-growth"
 version = "0.1.0"
 dependencies = [
  "agentrix-site-concierge",
+ "agentrix-site-defense",
  "agentrix-site-inbox",
  "chrono",
  "reqwest",
@@ -389,6 +390,7 @@ dependencies = [
  "agentrix-site-release",
  "anyhow",
  "async-trait",
+ "awp-types",
  "axum",
  "chrono",
  "futures",
