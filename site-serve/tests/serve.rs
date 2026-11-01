@@ -165,8 +165,10 @@ async fn runners_and_kernel_build_with_every_target() {
     ));
     let kernel = workflows::build_kernel(
         &config.app,
+        &config.site,
         &config.data,
         &kernel_stores,
+        stores.growth.clone(),
         runners,
         workflows,
     )

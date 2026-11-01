@@ -11,9 +11,7 @@ use std::sync::Arc;
 
 use adk_core::schedule::MissedFirePolicy;
 use adk_core::{ApprovalPolicy, ApproverSelector, NewRun, StoreApprovalService};
-use adk_kernel::charter::{
-    KpiTracker, SiteProcessKind, SqliteCharterStore, SqliteKpiStore, SqliteSignalStore,
-};
+use adk_kernel::charter::{SiteProcessKind, SqliteCharterStore, SqliteKpiStore, SqliteSignalStore};
 use adk_kernel::{
     CronWakeSource, Kernel, KernelConfig, Partitions, SourceWatermark, SqliteAgendaStore,
     SqliteCronWatermarkStore, SqlitePartitionStore,
@@ -246,8 +244,10 @@ pub async fn open_kernel_stores(data: &Path) -> anyhow::Result<KernelStores> {
 /// the guarded workflows.
 pub async fn build_kernel(
     app: &str,
+    site_name: &str,
     data: &Path,
     stores: &KernelStores,
+    growth: Arc<Growth>,
     runners: Vec<(String, Arc<Runner>)>,
     workflows: Arc<SiteWorkflows>,
 ) -> anyhow::Result<Kernel> {
@@ -292,7 +292,11 @@ pub async fn build_kernel(
         builder =
             builder.trigger(kind.trigger(kind.default_wake(&partition), run, partition.clone()));
     }
-    let tracker = KpiTracker::new(site, charters, kpis);
+    crate::tracker::seed_charter(charters.as_ref(), site)
+        .await
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
+    let tracker =
+        crate::tracker::site_tracker(site, site_name, growth, charters.clone(), kpis.clone());
     builder = builder.trigger(tracker.trigger(app, "0 0 3 * * *"));
     let watermark = Arc::new(SourceWatermark::new(watermarks, "kernel:kpi"))
         as Arc<dyn adk_agent::ambient::TickWatermark>;

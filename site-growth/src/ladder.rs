@@ -79,6 +79,13 @@ impl Area {
         }
     }
 
+    /// The area holding `job`, or `None` for a job the charter does not name.
+    pub fn of(job: &str) -> Option<Self> {
+        [Self::Run, Self::Growth, Self::Revenue, Self::Account]
+            .into_iter()
+            .find(|area| area.jobs().contains(&job))
+    }
+
     /// Parses an area name, or `None`.
     pub fn parse(text: &str) -> Option<Self> {
         match text {
@@ -238,6 +245,44 @@ impl Growth {
                 .fetch_optional(&self.pool)
                 .await?;
         Ok(row.map(|(reason,)| reason))
+    }
+
+    /// Demotes `job`'s area when it currently breaches: the eager half of
+    /// enforcement, so no action runs on a stale level while the nightly tick
+    /// is still hours away. Returns the demotions applied.
+    pub async fn apply_job_breach(
+        &self,
+        site: &str,
+        job: &str,
+    ) -> Result<Vec<(String, JobLevel, JobLevel)>, BudgetError> {
+        let Some(area) = Area::of(job) else {
+            return Ok(Vec::new());
+        };
+        let breached = self
+            .breaches(site)
+            .await?
+            .iter()
+            .any(|breach| Area::parse(&breach.area) == Some(area));
+        if breached {
+            self.demote_area(site, area).await
+        } else {
+            Ok(Vec::new())
+        }
+    }
+
+    /// The action-time gate: demotes `job`'s breached area first, then refuses
+    /// paused or below-minimum. Every tool and every live effect calls this
+    /// before acting, so a breach binds the very next action — strictly before
+    /// any effect commits, whatever the nightly tick has seen.
+    pub async fn enforce(
+        &self,
+        site: &str,
+        job: &str,
+        minimum: JobLevel,
+        action: &str,
+    ) -> Result<JobLevel, BudgetError> {
+        self.apply_job_breach(site, job).await?;
+        self.check_ready(site, job, minimum, action).await
     }
 
     /// The full gate: a paused job refuses first, then a below-minimum job.

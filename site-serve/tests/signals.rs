@@ -181,8 +181,10 @@ async fn start_kernel(
     ));
     let kernel = workflows::build_kernel(
         &config.app,
+        &config.site,
         &config.data,
         kernel_stores,
+        stores.growth.clone(),
         runners,
         workflow_runs,
     )

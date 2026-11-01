@@ -20,7 +20,7 @@ use adk_model::muse::{MuseClient, MuseConfig};
 use adk_runner::Runner;
 use adk_tool::FunctionTool;
 use agentrix_site_concierge::Corpus;
-use agentrix_site_growth::Growth;
+use agentrix_site_growth::{Growth, JobLevel};
 use agentrix_site_inbox::{CardKind, CardStore, NewCard};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -55,23 +55,21 @@ pub fn build_model(config: &ServeConfig) -> anyhow::Result<Arc<dyn Llm>> {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct NoArgs {}
 
-/// Refuses when `job` is paused: the tools honor the ladder's pauses, so a
-/// breached area's jobs stop at the next wake and their signals wait.
+/// The tools' gate: demotes `job`'s breached area first, then refuses paused
+/// or below-`floor`. Readers sit at Observe, draft filers at Propose — filing
+/// the held card is the floor outcome, so it never refuses on level.
 async fn check_running(
     growth: &Arc<Growth>,
     site: &str,
     job: &'static str,
+    floor: JobLevel,
+    action: &'static str,
 ) -> Result<(), adk_core::AdkError> {
-    let paused = growth
-        .paused_reason(site, job)
+    growth
+        .enforce(site, job, floor, action)
         .await
-        .map_err(|e| adk_core::AdkError::config(e.to_string()))?;
-    if let Some(reason) = paused {
-        return Err(adk_core::AdkError::config(format!(
-            "ladder: {job} on {site} is paused: {reason}"
-        )));
-    }
-    Ok(())
+        .map(|_| ())
+        .map_err(|e| adk_core::AdkError::config(e.to_string()))
 }
 
 /// A tool reading the oldest open signal record of one kind: the job's pending
@@ -104,7 +102,7 @@ pub fn next_tool(work: NextWork, name: &'static str, description: &'static str) 
             let site = work.site.clone();
             let (job, kind) = (work.job, work.kind);
             async move {
-                check_running(&growth, &site, job).await?;
+                check_running(&growth, &site, job, JobLevel::Observe, "read pending work").await?;
                 let filter = SignalFilter::default()
                     .partition(partition)
                     .kind(kind)
@@ -247,7 +245,14 @@ pub fn file_draft_tool(
             let growth = growth.clone();
             let site = site.clone();
             async move {
-                check_running(&growth, &site, "freshness").await?;
+                check_running(
+                    &growth,
+                    &site,
+                    "freshness",
+                    JobLevel::Propose,
+                    "file a draft",
+                )
+                .await?;
                 let parsed: FileDraftArgs = serde_json::from_value(args.clone())
                     .map_err(|e| adk_core::AdkError::config(format!("bad draft args: {e}")))?;
                 let title = format!("Content Editor: agent draft for `{}`", parsed.page_slug);
@@ -297,7 +302,7 @@ pub fn file_reply_draft_tool(
             let growth = growth.clone();
             let site = site.clone();
             async move {
-                check_running(&growth, &site, "social").await?;
+                check_running(&growth, &site, "social", JobLevel::Propose, "file a draft").await?;
                 let parsed: FileReplyArgs = serde_json::from_value(args.clone())
                     .map_err(|e| adk_core::AdkError::config(format!("bad reply args: {e}")))?;
                 let title = format!("Reputation Manager: reply draft for {}", parsed.platform);
@@ -349,7 +354,7 @@ pub fn file_followup_tool(
             let growth = growth.clone();
             let site = site.clone();
             async move {
-                check_running(&growth, &site, "nurture").await?;
+                check_running(&growth, &site, "nurture", JobLevel::Propose, "file a draft").await?;
                 let parsed: FileFollowupArgs = serde_json::from_value(args.clone())
                     .map_err(|e| adk_core::AdkError::config(format!("bad followup args: {e}")))?;
                 let title = format!("Sales Rep: follow up with lead {}", parsed.lead_ref);
@@ -397,7 +402,14 @@ pub fn file_answer_draft_tool(
             let growth = growth.clone();
             let site = site.clone();
             async move {
-                check_running(&growth, &site, "owner-questions").await?;
+                check_running(
+                    &growth,
+                    &site,
+                    "owner-questions",
+                    JobLevel::Propose,
+                    "file a draft",
+                )
+                .await?;
                 let parsed: FileAnswerArgs = serde_json::from_value(args.clone())
                     .map_err(|e| adk_core::AdkError::config(format!("bad answer args: {e}")))?;
                 let title = "Chief of Staff: answer draft for an escalation".to_string();
@@ -436,7 +448,14 @@ pub fn retrieve_tool(corpus: Arc<Corpus>, growth: Arc<Growth>, site: String) -> 
             let growth = growth.clone();
             let site = site.clone();
             async move {
-                check_running(&growth, &site, "owner-questions").await?;
+                check_running(
+                    &growth,
+                    &site,
+                    "owner-questions",
+                    JobLevel::Observe,
+                    "quote the corpus",
+                )
+                .await?;
                 let parsed: RetrieveArgs = serde_json::from_value(args)
                     .map_err(|e| adk_core::AdkError::config(format!("bad retrieve args: {e}")))?;
                 let hits = agentrix_site_concierge::retrieve(&corpus, &site, &parsed.query, 3)

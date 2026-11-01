@@ -304,3 +304,49 @@ async fn paused_jobs_hold_until_resumed() {
         .unwrap();
     assert!(matches!(posted, PostOutcome::Posted(_)));
 }
+
+#[tokio::test]
+async fn enforce_demotes_before_it_refuses() {
+    use agentrix_site_growth::BudgetError;
+
+    let dir = tempfile::tempdir().unwrap();
+    let (growth, _) = setup(&dir).await;
+    growth
+        .set_target("demo", "qualified_leads", 100.0, Direction::Up, "revenue")
+        .await
+        .unwrap();
+    growth
+        .record("demo", "qualified_leads", 40.0)
+        .await
+        .unwrap();
+    assert_eq!(
+        growth.level("demo", "nurture").await.unwrap(),
+        JobLevel::ActWithinBudget
+    );
+
+    // The breach demotes first; the lowered level then refuses the act.
+    let refused = growth
+        .enforce("demo", "nurture", JobLevel::ActWithinBudget, "act")
+        .await;
+    assert!(
+        matches!(refused, Err(BudgetError::BelowLevel { .. })),
+        "{refused:?}"
+    );
+    assert_eq!(
+        growth.level("demo", "nurture").await.unwrap(),
+        JobLevel::ActWithApproval
+    );
+    // Still breached: the next action demotes again.
+    let _ = growth
+        .enforce("demo", "nurture", JobLevel::ActWithinBudget, "act")
+        .await;
+    assert_eq!(
+        growth.level("demo", "nurture").await.unwrap(),
+        JobLevel::ActReversibleOnly
+    );
+    // Unbreached areas never move.
+    assert_eq!(
+        growth.level("demo", "freshness").await.unwrap(),
+        JobLevel::ActWithinBudget
+    );
+}

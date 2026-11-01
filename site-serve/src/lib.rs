@@ -10,6 +10,7 @@
 
 pub mod agents;
 pub mod signals;
+pub mod tracker;
 pub mod workflows;
 
 use std::path::{Path, PathBuf};
@@ -214,14 +215,29 @@ pub async fn serve(config: &ServeConfig) -> anyhow::Result<()> {
 
     let kernel = workflows::build_kernel(
         &config.app,
+        &config.site,
         &config.data,
         &kernel_stores,
+        stores.growth.clone(),
         runners,
         workflows,
     )
     .await?;
     kernel.start().await.map_err(anyhow_err)?;
     tracing::info!(app = %config.app, "kernel started");
+    let restored = tracker::site_tracker(
+        uuid::Uuid::nil(),
+        &config.site,
+        stores.growth.clone(),
+        kernel_stores.charters.clone(),
+        kernel_stores.kpis.clone(),
+    )
+    .restore_pauses()
+    .await
+    .map_err(anyhow_err)?;
+    if !restored.is_empty() {
+        tracing::info!(jobs = ?restored, "breach pauses restored");
+    }
 
     let partition: adk_kernel::PartitionId = format!("{}.back-office", config.app).into();
     let sink = adk_kernel::charter::SignalSink::for_kernel(

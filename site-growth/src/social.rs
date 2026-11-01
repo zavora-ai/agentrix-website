@@ -344,7 +344,7 @@ pub async fn publish_reply(
     reply: &str,
 ) -> Result<PostOutcome, SocialError> {
     if let Err(refused) = growth
-        .check_ready(site, "social", JobLevel::ActWithinBudget, "post a reply")
+        .enforce(site, "social", JobLevel::ActWithinBudget, "post a reply")
         .await
     {
         let card = cards
