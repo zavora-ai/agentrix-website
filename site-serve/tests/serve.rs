@@ -280,3 +280,149 @@ async fn growth_runner_files_a_draft_live() {
         "a held contact draft exists"
     );
 }
+
+/// The served kernel registers the host's single table, and the weekly digest
+/// fires a missed tick once instead of skipping it.
+#[tokio::test]
+async fn standing_triggers_share_the_host_table_and_fire_the_digest_once() {
+    let partition: adk_kernel::PartitionId = "demo.back-office".into();
+    let standing = workflows::standing_triggers("demo", workflows::site_id(), &partition);
+    assert_eq!(standing.len(), 7);
+    let mut check = agentrix_site_host::SelfCheck::new();
+    check.processes(&standing).expect("all seven kinds");
+    let digest = standing
+        .iter()
+        .find(|process| process.job == "weekly-review")
+        .expect("the digest");
+    match &digest.trigger.wake {
+        adk_kernel::Wake::Cron { missed, .. } => assert_eq!(
+            missed,
+            &adk_core::schedule::MissedFirePolicy::FireOnce,
+            "a down Monday still reports"
+        ),
+        other => panic!("the digest must stay cron, got {other:?}"),
+    }
+    let probe = standing
+        .iter()
+        .find(|process| process.job == "protect")
+        .expect("the probe");
+    match &probe.trigger.wake {
+        adk_kernel::Wake::Cron { missed, .. } => assert_eq!(
+            missed,
+            &adk_core::schedule::MissedFirePolicy::Skip,
+            "the five-minute probe skips catch-up"
+        ),
+        other => panic!("the probe must stay cron, got {other:?}"),
+    }
+}
+
+/// The kernel build registers the back-office partition with its quotas.
+#[tokio::test]
+async fn back_office_partition_carries_quotas() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = config(&dir);
+    std::fs::create_dir_all(&config.data).unwrap();
+    let stores = ProductStores::open(&config.data).await.unwrap();
+    seed_demo(&stores, &config.site).await.unwrap();
+    let sessions: Arc<dyn adk_session::SessionService> =
+        Arc::new(adk_session::InMemorySessionService::new());
+    let model = agents::build_model(&config).unwrap();
+    let kernel_stores = workflows::open_kernel_stores(&config.data).await.unwrap();
+    let runners = agents::build_runners(
+        &config.app,
+        &config.site,
+        &stores,
+        sessions,
+        model,
+        kernel_stores.signals.clone(),
+        None,
+    )
+    .unwrap();
+    let current = Current::new(
+        stores
+            .releases
+            .current(&config.site)
+            .await
+            .unwrap()
+            .unwrap(),
+    );
+    let workflow_runs = Arc::new(SiteWorkflows::new(
+        config.site.clone(),
+        current,
+        stores.releases.clone(),
+        stores.cards.clone(),
+        stores.growth.clone(),
+        stores.freeze.clone(),
+    ));
+    let kernel = workflows::build_kernel(
+        &config.app,
+        &config.site,
+        &config.data,
+        &kernel_stores,
+        stores.growth.clone(),
+        runners,
+        workflow_runs,
+    )
+    .await
+    .unwrap();
+    let partitions = adk_kernel::Partitions::new(kernel_stores.partitions.clone());
+    let partition: adk_kernel::PartitionId = "demo.back-office".into();
+    let registered = partitions
+        .get(&partition)
+        .await
+        .unwrap()
+        .expect("the back-office partition");
+    assert_eq!(registered.quotas.max_running, Some(4));
+    assert_eq!(registered.quotas.max_queued, Some(64));
+    drop(kernel);
+}
+
+/// The served binary self-checks green before serving: spawn dry-run, await
+/// the report line on a reader thread with a deadline, then stop it.
+#[test]
+fn serve_binary_self_checks_then_serves() {
+    use std::io::BufRead as _;
+    use std::time::{Duration, Instant};
+
+    let exe = std::env::var("CARGO_BIN_EXE_agentrix-site-serve").expect("the binary under test");
+    let dir = tempfile::tempdir().unwrap();
+    let mut child = std::process::Command::new(exe)
+        .arg("--data")
+        .arg(dir.path().join("data"))
+        .arg("--addr")
+        .arg("127.0.0.1:0")
+        .arg("--dry-run")
+        .env("RUST_LOG", "info")
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::inherit())
+        .spawn()
+        .expect("the server spawns");
+    let stdout = child.stdout.take().expect("piped stdout");
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        for line in std::io::BufReader::new(stdout).lines() {
+            if tx.send(line.unwrap_or_default()).is_err() {
+                break;
+            }
+        }
+    });
+    let deadline = Instant::now() + Duration::from_secs(60);
+    let mut green = false;
+    while Instant::now() < deadline {
+        match rx.recv_timeout(Duration::from_millis(200)) {
+            Ok(line) if line.contains("self-check green") => {
+                green = true;
+                break;
+            }
+            Ok(_) => {}
+            Err(_) => {
+                if matches!(child.try_wait(), Ok(Some(_))) {
+                    break;
+                }
+            }
+        }
+    }
+    child.kill().ok();
+    child.wait().ok();
+    assert!(green, "the served path must self-check green");
+}

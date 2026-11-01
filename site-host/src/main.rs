@@ -16,96 +16,20 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use adk_core::schedule::MissedFirePolicy;
-use adk_core::{AdkError, ApprovalPolicy, ApproverSelector, NewRun, Result, StoreApprovalService};
+use adk_core::{AdkError, ApprovalPolicy, ApproverSelector, Result, StoreApprovalService};
 use adk_kernel::charter::{
-    KpiTracker, SignalSink, SiteProcessKind, SqliteCharterStore, SqliteKpiStore, SqliteSignalStore,
+    KpiTracker, SignalSink, SqliteCharterStore, SqliteKpiStore, SqliteSignalStore,
 };
 use adk_kernel::{
     CronWakeSource, Kernel, KernelConfig, Partitions, SourceWatermark, SqliteAgendaStore,
     SqliteCronWatermarkStore, SqlitePartitionStore,
 };
 use adk_session::{SqliteApprovalStore, SqliteRunStore};
+use agentrix_site_host::{SelfCheck, processes};
 use awp_types::{Bounded, Signal, SignalKind};
-use serde_json::json;
-
-mod selfcheck;
-
-use selfcheck::SelfCheck;
 
 /// The demo site's application name; its back-office partition hangs below it.
 const APP: &str = "demo";
-
-/// A site process: its kind, its job, the agent or workflow that runs it, and its
-/// standing trigger. Mirrors `adk_website::jobs::processes`.
-pub(crate) struct Process {
-    pub(crate) kind: SiteProcessKind,
-    pub(crate) job: &'static str,
-    pub(crate) target: &'static str,
-    pub(crate) trigger: adk_kernel::Trigger,
-}
-
-/// The seven processes `adk-website` wakes for a business site: the probe, the watch and
-/// the digest run as workflows, the others run their job's agent with the playbook.
-fn processes(site: uuid::Uuid, partition: &adk_kernel::PartitionId) -> Vec<Process> {
-    const TABLE: [(SiteProcessKind, &str, &str, &str); 7] = [
-        (
-            SiteProcessKind::Probe,
-            "protect",
-            "protect",
-            "website.guardian.probe",
-        ),
-        (
-            SiteProcessKind::Watch,
-            "hosting",
-            "hosting",
-            "website.guardian.watch",
-        ),
-        (SiteProcessKind::Content, "freshness", "freshness", "growth"),
-        (
-            SiteProcessKind::Reviews,
-            "social",
-            "review-replies",
-            "growth",
-        ),
-        (SiteProcessKind::Outreach, "nurture", "nurture", "revenue"),
-        (
-            SiteProcessKind::Support,
-            "owner-questions",
-            "owner-questions",
-            "steward",
-        ),
-        (
-            SiteProcessKind::Digest,
-            "weekly-review",
-            "weekly-review",
-            "website.steward.digest",
-        ),
-    ];
-    TABLE
-        .into_iter()
-        .map(|(kind, job, playbook, target)| {
-            let run = NewRun::new(
-                kind.queue().as_str(),
-                APP,
-                format!("site:{APP}"),
-                target,
-                json!({
-                    "site": site,
-                    "job": job,
-                    "playbook": playbook,
-                    "text": format!("Run the {playbook} playbook for job {job}."),
-                }),
-            );
-            let trigger = kind.trigger(kind.default_wake(partition), run, partition.clone());
-            Process {
-                kind,
-                job,
-                target,
-                trigger,
-            }
-        })
-        .collect()
-}
 
 fn store(error: impl std::fmt::Display) -> AdkError {
     AdkError::config(format!("the host's stores could not open: {error}"))
@@ -148,7 +72,7 @@ pub async fn run(data: &Path) -> Result<SelfCheck> {
 
     let site = uuid::Uuid::nil();
     let partition: adk_kernel::PartitionId = format!("{APP}.back-office").into();
-    let processes = processes(site, &partition);
+    let processes = processes(APP, site, &partition);
     check.processes(&processes)?;
 
     let mut builder = Kernel::builder()

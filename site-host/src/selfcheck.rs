@@ -40,7 +40,7 @@ impl SelfCheck {
 
     /// Records every site process registered, and fails when any of the seven
     /// [`SiteProcessKind`]s has no trigger: the host must wake every job.
-    pub(crate) fn processes(&mut self, processes: &[Process]) -> Result<()> {
+    pub fn processes(&mut self, processes: &[Process]) -> Result<()> {
         for process in processes {
             self.lines.push(format!(
                 "process {}: job {} -> target {}",

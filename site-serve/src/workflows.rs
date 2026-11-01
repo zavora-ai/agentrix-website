@@ -10,7 +10,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use adk_core::schedule::MissedFirePolicy;
-use adk_core::{ApprovalPolicy, ApproverSelector, NewRun, StoreApprovalService};
+use adk_core::{ApprovalPolicy, ApproverSelector, StoreApprovalService};
 use adk_kernel::charter::{SiteProcessKind, SqliteCharterStore, SqliteKpiStore, SqliteSignalStore};
 use adk_kernel::{
     CronWakeSource, Kernel, KernelConfig, Partitions, SourceWatermark, SqliteAgendaStore,
@@ -179,9 +179,19 @@ pub struct KernelStores {
     pub kpis: Arc<SqliteKpiStore>,
 }
 
+/// The served site's kernel id: one site, one kernel, one id.
+pub fn site_id() -> uuid::Uuid {
+    uuid::Uuid::nil()
+}
+
+/// The kernel database URL under `data`.
+pub fn kernel_db_url(data: &Path) -> String {
+    format!("sqlite://{}?mode=rwc", data.join("kernel.db").display())
+}
+
 /// Opens and migrates every kernel store in one database under `data`.
 pub async fn open_kernel_stores(data: &Path) -> anyhow::Result<KernelStores> {
-    let url = format!("sqlite://{}?mode=rwc", data.join("kernel.db").display());
+    let url = kernel_db_url(data);
     let pool = sqlx::sqlite::SqlitePoolOptions::new()
         .max_connections(8)
         .connect(&url)
@@ -230,6 +240,30 @@ pub async fn open_kernel_stores(data: &Path) -> anyhow::Result<KernelStores> {
     })
 }
 
+/// The standing triggers: the host's single table, with the weekly digest
+/// firing a missed tick once instead of skipping it — a down Monday must
+/// still report the week.
+pub fn standing_triggers(
+    app: &str,
+    site: uuid::Uuid,
+    partition: &adk_kernel::PartitionId,
+) -> Vec<agentrix_site_host::Process> {
+    agentrix_site_host::processes(app, site, partition)
+        .into_iter()
+        .map(|mut process| {
+            if process.kind == SiteProcessKind::Digest
+                && let adk_kernel::Wake::Cron { expr, .. } = process.trigger.wake.clone()
+            {
+                process.trigger.wake = adk_kernel::Wake::Cron {
+                    expr,
+                    missed: MissedFirePolicy::FireOnce,
+                };
+            }
+            process
+        })
+        .collect()
+}
+
 /// Builds (not starts) the site kernel: durable SQLite stores, the seven standing
 /// triggers plus the KPI tracker's nightly trigger, the hosted agent runners, and
 /// the guarded workflows.
@@ -249,13 +283,26 @@ pub async fn build_kernel(
             .with_router(ApprovalPolicy::new([ApproverSelector::human("owner")])),
     );
     let agenda = stores.agenda.clone();
-    let partition_store = stores.partitions.clone();
     let watermarks = stores.watermarks.clone();
     let charters = stores.charters.clone();
     let kpis = stores.kpis.clone();
 
-    let site = uuid::Uuid::nil();
+    let site = site_id();
     let partition: adk_kernel::PartitionId = format!("{app}.back-office").into();
+    let partitions = Partitions::new(stores.partitions.clone());
+    partitions
+        .put(
+            adk_kernel::Partition::new(partition.clone(), "back-office").with_quotas(
+                adk_kernel::Quotas::new()
+                    .with_max_running(4)
+                    .with_max_queued(64),
+            ),
+            adk_core::audit_log::AuditActor::subject(adk_core::principal::SubjectRef::human(
+                "owner",
+            )),
+        )
+        .await
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
     let mut builder = Kernel::builder()
         .config(
             KernelConfig::default()
@@ -264,24 +311,11 @@ pub async fn build_kernel(
         )
         .run_store(runs)
         .approval_service(approvals)
-        .partitions(Partitions::new(partition_store))
+        .partitions(partitions)
         .agenda_store(agenda)
         .watermark_store(watermarks.clone());
-    for (kind, job, playbook, target) in triggers() {
-        let run = NewRun::new(
-            kind.queue().as_str(),
-            app,
-            format!("site:{app}"),
-            target,
-            json!({
-                "site": site,
-                "job": job,
-                "playbook": playbook,
-                "text": format!("Run the {playbook} playbook for job {job}."),
-            }),
-        );
-        builder =
-            builder.trigger(kind.trigger(kind.default_wake(&partition), run, partition.clone()));
+    for process in standing_triggers(app, site, &partition) {
+        builder = builder.trigger(process.trigger);
     }
     crate::tracker::seed_charter(charters.as_ref(), site)
         .await
@@ -304,32 +338,4 @@ pub async fn build_kernel(
     }
     builder = builder.workflows(workflows);
     builder.build().map_err(|e| anyhow::anyhow!("{e}"))
-}
-
-/// The seven processes: kinds, jobs, playbooks and targets, mirroring `site-host`.
-fn triggers() -> [(SiteProcessKind, &'static str, &'static str, &'static str); 7] {
-    [
-        (SiteProcessKind::Probe, "protect", "protect", PROBE_WORKFLOW),
-        (SiteProcessKind::Watch, "hosting", "hosting", WATCH_WORKFLOW),
-        (SiteProcessKind::Content, "freshness", "freshness", "growth"),
-        (
-            SiteProcessKind::Reviews,
-            "social",
-            "review-replies",
-            "growth",
-        ),
-        (SiteProcessKind::Outreach, "nurture", "nurture", "revenue"),
-        (
-            SiteProcessKind::Support,
-            "owner-questions",
-            "owner-questions",
-            "steward",
-        ),
-        (
-            SiteProcessKind::Digest,
-            "weekly-review",
-            "weekly-review",
-            DIGEST_WORKFLOW,
-        ),
-    ]
 }

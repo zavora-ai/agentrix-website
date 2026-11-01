@@ -10,6 +10,7 @@ description = "Agentrix Website composition: started kernel, hosted Muse agent t
 [dependencies]
 agentrix-site-concierge = { path = "../site-concierge" }
 agentrix-site-defense = { path = "../site-defense" }
+agentrix-site-host = { path = "../site-host" }
 agentrix-site-edge = { path = "../site-edge" }
 agentrix-site-growth = { path = "../site-growth" }
 agentrix-site-inbox = { path = "../site-inbox" }

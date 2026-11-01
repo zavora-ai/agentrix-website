@@ -342,6 +342,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "agentrix-site-host"
+version = "0.1.0"
+dependencies = [
+ "adk-agent",
+ "adk-core",
+ "adk-kernel",
+ "adk-session",
+ "awp-types",
+ "chrono",
+ "serde_json",
+ "sqlx",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "uuid",
+]
+
+[[package]]
 name = "agentrix-site-inbox"
 version = "0.1.0"
 dependencies = [
@@ -386,6 +404,7 @@ dependencies = [
  "agentrix-site-defense",
  "agentrix-site-edge",
  "agentrix-site-growth",
+ "agentrix-site-host",
  "agentrix-site-inbox",
  "agentrix-site-release",
  "anyhow",

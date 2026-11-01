@@ -22,6 +22,7 @@ use agentrix_site_edge::{Current, RateLimit, build_release, business_site, route
 use agentrix_site_growth::Growth;
 use agentrix_site_inbox::{Card, CardKind, CardStore, Decision, Execute, NewCard};
 use agentrix_site_release::{LaunchGate, ReleaseStore};
+use awp_types::{Bounded, Signal, SignalKind};
 
 /// What serving is for: the site, its data, its address, its model.
 #[derive(Debug, Clone)]
@@ -224,6 +225,33 @@ pub async fn serve(config: &ServeConfig) -> anyhow::Result<()> {
         workflows,
     )
     .await?;
+    let partition: adk_kernel::PartitionId = format!("{}.back-office", config.app).into();
+    let mut check = agentrix_site_host::SelfCheck::new();
+    check.stores(&workflows::kernel_db_url(&config.data));
+    let standing = workflows::standing_triggers(&config.app, workflows::site_id(), &partition);
+    check.processes(&standing).map_err(anyhow_err)?;
+    check.kernel(standing.len() + 1);
+    let sink = adk_kernel::charter::SignalSink::for_kernel(
+        &kernel,
+        kernel_stores.signals.clone(),
+        partition,
+    );
+    let probe = Signal {
+        id: uuid::Uuid::new_v4(),
+        kind: SignalKind::ContentGap {
+            topic: Bounded::new("self-check probe", 80).map_err(anyhow_err)?,
+            question_count: 1,
+            samples: Vec::new(),
+        },
+        emitted_by: format!("urn:adk:agent:{}/self-check", config.site),
+        emitted_at: chrono::Utc::now(),
+    };
+    let outcome = sink.emit(probe).await.map_err(anyhow_err)?;
+    check.signal(&outcome).map_err(anyhow_err)?;
+    check
+        .durable_db(&config.data.join("kernel.db"))
+        .map_err(anyhow_err)?;
+    tracing::info!(report = %check, "self-check green");
     kernel.start().await.map_err(anyhow_err)?;
     tracing::info!(app = %config.app, "kernel started");
     let restored = tracker::site_tracker(
@@ -240,12 +268,6 @@ pub async fn serve(config: &ServeConfig) -> anyhow::Result<()> {
         tracing::info!(jobs = ?restored, "breach pauses restored");
     }
 
-    let partition: adk_kernel::PartitionId = format!("{}.back-office", config.app).into();
-    let sink = adk_kernel::charter::SignalSink::for_kernel(
-        &kernel,
-        kernel_stores.signals.clone(),
-        partition,
-    );
     let intake = Arc::new(signals::Intake {
         site: config.site.clone(),
         corpus: stores.corpus.clone(),
