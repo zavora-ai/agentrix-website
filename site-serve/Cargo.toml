@@ -1,0 +1,39 @@
+[package]
+name = "agentrix-site-serve"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "Agentrix Website composition: started kernel, hosted Muse agent teams, LaunchGate releases, guarded workflows, live edge"
+
+[workspace]
+
+[dependencies]
+agentrix-site-concierge = { path = "../site-concierge" }
+agentrix-site-defense = { path = "../site-defense" }
+agentrix-site-edge = { path = "../site-edge" }
+agentrix-site-growth = { path = "../site-growth" }
+agentrix-site-inbox = { path = "../site-inbox" }
+agentrix-site-release = { path = "../site-release" }
+adk-agent = { path = "../../adk-rust/adk-agent" }
+adk-core = { path = "../../adk-rust/adk-core" }
+adk-kernel = { path = "../../adk-rust/adk-kernel", features = ["charter"] }
+adk-model = { path = "../../adk-rust/adk-model", default-features = false, features = ["muse"] }
+adk-runner = { path = "../../adk-rust/adk-runner" }
+adk-server = { path = "../../adk-rust/adk-server", default-features = false, features = ["background"] }
+adk-session = { path = "../../adk-rust/adk-session", features = ["sqlite"] }
+adk-tool = { path = "../../adk-rust/adk-tool" }
+anyhow = "1.0"
+async-trait = "0.1"
+axum = { version = "0.8", features = ["macros"] }
+chrono = "0.4"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+sqlx = { version = "0.9", default-features = false, features = ["sqlite", "runtime-tokio", "chrono", "json", "macros"] }
+tokio = { version = "1.40", features = ["full"] }
+tokio-util = "0.7"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+uuid = { version = "1", features = ["v4", "serde"] }
+
+[dev-dependencies]
+tempfile = "3"
