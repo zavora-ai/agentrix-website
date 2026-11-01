@@ -160,3 +160,76 @@ async fn runners_and_kernel_build_with_every_target() {
         .unwrap();
     drop(kernel);
 }
+
+/// Live proof: the Growth runner closes a gap end to end through Baseten — the
+/// agent calls the schemad tool and a held Draft card exists afterwards.
+#[tokio::test]
+#[ignore = "needs BASETEN_API_KEY and spends model calls"]
+async fn growth_runner_files_a_draft_live() {
+    use adk_core::{Content, SessionId, UserId};
+    use adk_session::CreateRequest;
+    use futures::StreamExt as _;
+
+    let dir = tempfile::tempdir().unwrap();
+    let mut config = config(&dir);
+    config.dry_run = false;
+    config.baseten_key = Some(std::env::var("BASETEN_API_KEY").expect("BASETEN_API_KEY"));
+    config.baseten_model = std::env::var("BASETEN_MODEL")
+        .unwrap_or_else(|_| "meta-models/muse-spark-open-1026".into());
+    config.baseten_base_url = std::env::var("BASETEN_BASE_URL")
+        .unwrap_or_else(|_| "https://inference.baseten.co/v1".into());
+    std::fs::create_dir_all(&config.data).unwrap();
+    let stores = ProductStores::open(&config.data).await.unwrap();
+    seed_demo(&stores, &config.site).await.unwrap();
+    let sessions: Arc<dyn adk_session::SessionService> =
+        Arc::new(adk_session::InMemorySessionService::new());
+    let session = sessions
+        .create(CreateRequest {
+            app_name: config.app.clone(),
+            user_id: "owner".to_string(),
+            session_id: None,
+            state: Default::default(),
+        })
+        .await
+        .unwrap();
+    let model = agents::build_model(&config).unwrap();
+    let runners =
+        agents::build_runners(&config.app, &config.site, &stores, sessions, model).unwrap();
+    let growth = runners
+        .iter()
+        .find(|(target, _)| target == "growth")
+        .expect("growth runner")
+        .1
+        .clone();
+
+    let gap = serde_json::json!({
+        "gaps": [{"topic": "Weekend opening hours", "questions": ["Are you open Saturday?"]}],
+        "page_slug": "contact",
+    });
+    let mut events = growth
+        .run(
+            UserId::new("owner").unwrap(),
+            SessionId::new(session.id().to_string()).unwrap(),
+            Content::new("user").with_text(gap.to_string()),
+        )
+        .await
+        .unwrap();
+    let mut calls = 0;
+    while let Some(event) = events.next().await {
+        let event = event.unwrap();
+        if let Some(content) = &event.llm_response.content {
+            for part in &content.parts {
+                if matches!(part, adk_core::Part::FunctionCall { .. }) {
+                    calls += 1;
+                }
+            }
+        }
+    }
+    assert!(calls >= 1, "the agent must call file_content_draft");
+    let open = stores.cards.list_open(&config.site).await.unwrap();
+    assert!(
+        open.iter()
+            .any(|card| card.role == "Content Editor" && card.title.contains("contact")),
+        "a held contact draft exists"
+    );
+}

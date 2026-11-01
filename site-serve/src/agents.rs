@@ -5,17 +5,20 @@
 //! gaps (the reviews trigger shares it in v1, reading its job from the run
 //! input), the Revenue runner is the qualifier-to-drafter outreach team, and the
 //! Steward runner answers with corpus retrieval. Every agent call files cards or
-//! quotes chunks — nothing publishes unwatched.
+//! quotes chunks — nothing publishes unwatched. Tools carry JSON schemas so the
+//! model argues correctly, and every runner carries a tool-call budget.
 
 use std::sync::Arc;
 
 use adk_agent::{LlmAgentBuilder, SequentialAgent};
-use adk_core::{Agent, Llm};
+use adk_core::{Agent, Llm, RunBudget};
 use adk_model::muse::{MuseClient, MuseConfig};
 use adk_runner::Runner;
 use adk_tool::FunctionTool;
 use agentrix_site_concierge::Corpus;
 use agentrix_site_inbox::{CardKind, CardStore, NewCard};
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
 
 use crate::{ProductStores, ServeConfig};
 
@@ -43,20 +46,38 @@ pub fn build_model(config: &ServeConfig) -> anyhow::Result<Arc<dyn Llm>> {
     Ok(Arc::new(client))
 }
 
+/// One proposed fact.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct FactArg {
+    /// Stable fact id within the page.
+    pub id: String,
+    /// The fact's text.
+    pub text: String,
+}
+
+/// Arguments for filing a content draft.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct FileDraftArgs {
+    /// The page slug the draft improves.
+    pub page_slug: String,
+    /// Proposed facts.
+    pub facts: Vec<FactArg>,
+    /// Why the draft exists.
+    pub rationale: String,
+}
+
 /// A tool filing content-draft cards: the Content Editor's hands.
 pub fn file_draft_tool(cards: Arc<CardStore>, site: String) -> FunctionTool {
     FunctionTool::new(
         "file_content_draft",
-        "Files a held content draft for a page: {page_slug, facts: [{id, text}], rationale}. Always held for approval; never publishes.",
+        "Files a held content draft for a page. Always held for approval; never publishes.",
         move |_ctx: Arc<dyn adk_core::ToolContext>, args: serde_json::Value| {
             let cards = cards.clone();
             let site = site.clone();
             async move {
-                let page = args
-                    .get("page_slug")
-                    .and_then(serde_json::Value::as_str)
-                    .unwrap_or("home");
-                let title = format!("Content Editor: agent draft for `{page}`");
+                let parsed: FileDraftArgs = serde_json::from_value(args.clone())
+                    .map_err(|e| adk_core::AdkError::config(format!("bad draft args: {e}")))?;
+                let title = format!("Content Editor: agent draft for `{}`", parsed.page_slug);
                 let card = cards
                     .file(NewCard::new(
                         site.as_str(),
@@ -71,19 +92,28 @@ pub fn file_draft_tool(cards: Arc<CardStore>, site: String) -> FunctionTool {
             }
         },
     )
+    .with_parameters_schema::<FileDraftArgs>()
+}
+
+/// Arguments for quoting the corpus.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct RetrieveArgs {
+    /// The question to quote for.
+    pub query: String,
 }
 
 /// A tool quoting the site's corpus: the Steward's memory.
 pub fn retrieve_tool(corpus: Arc<Corpus>, site: String) -> FunctionTool {
     FunctionTool::new(
         "retrieve_chunks",
-        "Quotes the site's own pages for a question: {query}. Returns the top chunks with documents and sources.",
+        "Quotes the site's own pages for a question. Returns the top chunks with documents and sources.",
         move |_ctx: Arc<dyn adk_core::ToolContext>, args: serde_json::Value| {
             let corpus = corpus.clone();
             let site = site.clone();
             async move {
-                let query = args.get("query").and_then(serde_json::Value::as_str).unwrap_or("");
-                let hits = agentrix_site_concierge::retrieve(&corpus, &site, query, 3)
+                let parsed: RetrieveArgs = serde_json::from_value(args)
+                    .map_err(|e| adk_core::AdkError::config(format!("bad retrieve args: {e}")))?;
+                let hits = agentrix_site_concierge::retrieve(&corpus, &site, &parsed.query, 3)
                     .await
                     .map_err(|e| adk_core::AdkError::config(e.to_string()))?;
                 Ok(serde_json::json!({
@@ -97,12 +127,14 @@ pub fn retrieve_tool(corpus: Arc<Corpus>, site: String) -> FunctionTool {
             }
         },
     )
+    .with_parameters_schema::<RetrieveArgs>()
     .with_read_only(true)
     .with_concurrency_safe(true)
 }
 
 /// Builds the three hosted runners: Growth (content + reviews), Revenue (the
-/// outreach team), Steward (support with retrieval).
+/// outreach team), Steward (support with retrieval). Every runner is tool-call
+/// budgeted so a confused model cannot loop.
 pub fn build_runners(
     app: &str,
     site: &str,
@@ -128,6 +160,7 @@ pub fn build_runners(
         .app_name(app)
         .agent(Arc::new(growth_agent) as Arc<dyn Agent>)
         .session_service(sessions.clone())
+        .budget(RunBudget::new().max_tool_calls(8))
         .build()
         .map_err(|e| anyhow::anyhow!("{e}"))?;
 
@@ -160,6 +193,7 @@ pub fn build_runners(
         .app_name(app)
         .agent(Arc::new(outreach) as Arc<dyn Agent>)
         .session_service(sessions.clone())
+        .budget(RunBudget::new().max_tool_calls(4))
         .build()
         .map_err(|e| anyhow::anyhow!("{e}"))?;
 
@@ -181,6 +215,7 @@ pub fn build_runners(
         .app_name(app)
         .agent(Arc::new(steward) as Arc<dyn Agent>)
         .session_service(sessions)
+        .budget(RunBudget::new().max_tool_calls(8))
         .build()
         .map_err(|e| anyhow::anyhow!("{e}"))?;
 

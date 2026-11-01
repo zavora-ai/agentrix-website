@@ -391,6 +391,8 @@ dependencies = [
  "async-trait",
  "axum",
  "chrono",
+ "futures",
+ "schemars",
  "serde",
  "serde_json",
  "sqlx",

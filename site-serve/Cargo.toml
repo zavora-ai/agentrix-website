@@ -27,6 +27,7 @@ async-trait = "0.1"
 axum = { version = "0.8", features = ["macros"] }
 chrono = "0.4"
 serde = { version = "1.0", features = ["derive"] }
+schemars = "1.0"
 serde_json = "1.0"
 sqlx = { version = "0.9", default-features = false, features = ["sqlite", "runtime-tokio", "chrono", "json", "macros"] }
 tokio = { version = "1.40", features = ["full"] }
@@ -36,4 +37,5 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 uuid = { version = "1", features = ["v4", "serde"] }
 
 [dev-dependencies]
+futures = "0.3"
 tempfile = "3"
