@@ -33,6 +33,17 @@ pub struct QuietHours {
 }
 
 impl QuietHours {
+    /// Quiet hours from `QUIET_START_MIN`/`QUIET_END_MIN` (UTC minutes past
+    /// midnight) when both are set and parse; `None` otherwise.
+    pub fn from_env() -> Option<Self> {
+        let start: u16 = std::env::var("QUIET_START_MIN").ok()?.parse().ok()?;
+        let end: u16 = std::env::var("QUIET_END_MIN").ok()?.parse().ok()?;
+        Some(Self {
+            start_min: start,
+            end_min: end,
+        })
+    }
+
     /// Whether `now` falls inside the window.
     pub fn defers(&self, now: DateTime<Utc>) -> bool {
         let mins = now.hour_min();

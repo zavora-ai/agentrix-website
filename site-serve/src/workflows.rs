@@ -56,16 +56,7 @@ impl SiteWorkflows {
         growth: Arc<Growth>,
         freeze: Arc<Freeze>,
     ) -> Self {
-        let quiet = match (
-            std::env::var("QUIET_START_MIN"),
-            std::env::var("QUIET_END_MIN"),
-        ) {
-            (Ok(start), Ok(end)) => match (start.parse(), end.parse()) {
-                (Ok(start_min), Ok(end_min)) => Some(QuietHours { start_min, end_min }),
-                _ => None,
-            },
-            _ => None,
-        };
+        let quiet = QuietHours::from_env();
         Self {
             site,
             current,

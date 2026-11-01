@@ -20,6 +20,7 @@ use adk_model::muse::{MuseClient, MuseConfig};
 use adk_runner::Runner;
 use adk_tool::FunctionTool;
 use agentrix_site_concierge::Corpus;
+use agentrix_site_defense::{Freeze, Guard, GuardDecision, QuietHours};
 use agentrix_site_growth::{Growth, JobLevel};
 use agentrix_site_inbox::{CardKind, CardStore, NewCard};
 use schemars::JsonSchema;
@@ -55,18 +56,48 @@ pub fn build_model(config: &ServeConfig) -> anyhow::Result<Arc<dyn Llm>> {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct NoArgs {}
 
-/// The tools' gate: demotes `job`'s breached area first, then refuses paused
-/// or below-`floor`. Readers sit at Observe, draft filers at Propose — filing
-/// the held card is the floor outcome, so it never refuses on level.
-async fn check_running(
-    growth: &Arc<Growth>,
-    site: &str,
-    job: &'static str,
-    floor: JobLevel,
-    action: &'static str,
-) -> Result<(), adk_core::AdkError> {
-    growth
-        .enforce(site, job, floor, action)
+/// Everything a tool gate checks: the ladder, the freeze switch, quiet hours.
+#[derive(Clone)]
+pub struct Gate {
+    /// The ladder gate.
+    pub growth: Arc<Growth>,
+    /// The freeze switch.
+    pub freeze: Arc<Freeze>,
+    /// Quiet hours, when set.
+    pub quiet: Option<QuietHours>,
+    /// The site served.
+    pub site: String,
+    /// The job acting, gated when paused.
+    pub job: &'static str,
+}
+
+/// The tools' gate: freeze and quiet hours first (audited skips), then the
+/// ladder's eager demotion and floor check. Readers sit at Observe, draft
+/// filers at Propose — filing the held card is the floor outcome, so it never
+/// refuses on level.
+async fn check_gate(gate: &Gate, tool: &str, floor: JobLevel) -> Result<(), adk_core::AdkError> {
+    let guard = match gate.quiet {
+        Some(quiet) => Guard::new(&gate.freeze).with_quiet(quiet),
+        None => Guard::new(&gate.freeze),
+    };
+    match guard
+        .check(&gate.site, tool, chrono::Utc::now())
+        .await
+        .map_err(|e| adk_core::AdkError::config(e.to_string()))?
+    {
+        GuardDecision::Run => {}
+        GuardDecision::Frozen(reason) => {
+            return Err(adk_core::AdkError::config(format!("site frozen: {reason}")));
+        }
+        GuardDecision::Deferred(wake) => {
+            return Err(adk_core::AdkError::config(format!(
+                "quiet hours: next wake {}",
+                wake.to_rfc3339()
+            )));
+        }
+    }
+    gate.growth
+        .enforce(&gate.site, gate.job, floor, tool)
         .await
         .map(|_| ())
         .map_err(|e| adk_core::AdkError::config(e.to_string()))
@@ -81,12 +112,8 @@ pub struct NextWork {
     pub signals: Arc<dyn SignalStore>,
     /// The back-office partition.
     pub partition: PartitionId,
-    /// The ladder gate.
-    pub growth: Arc<Growth>,
-    /// The site served.
-    pub site: String,
-    /// The job reading, gated when paused.
-    pub job: &'static str,
+    /// The freeze, quiet-hours and ladder gate.
+    pub gate: Gate,
     /// The signal kind read.
     pub kind: &'static str,
 }
@@ -98,11 +125,11 @@ pub fn next_tool(work: NextWork, name: &'static str, description: &'static str) 
         move |_ctx: Arc<dyn adk_core::ToolContext>, _args: serde_json::Value| {
             let signals = work.signals.clone();
             let partition = work.partition.clone();
-            let growth = work.growth.clone();
-            let site = work.site.clone();
-            let (job, kind) = (work.job, work.kind);
+            let gate = work.gate.clone();
+            let kind = work.kind;
+            let tool = name;
             async move {
-                check_running(&growth, &site, job, JobLevel::Observe, "read pending work").await?;
+                check_gate(&gate, tool, JobLevel::Observe).await?;
                 let filter = SignalFilter::default()
                     .partition(partition)
                     .kind(kind)
@@ -233,8 +260,7 @@ pub struct FileDraftArgs {
 pub fn file_draft_tool(
     cards: Arc<CardStore>,
     signals: Arc<dyn SignalStore>,
-    growth: Arc<Growth>,
-    site: String,
+    gate: Gate,
 ) -> FunctionTool {
     FunctionTool::new(
         "file_content_draft",
@@ -242,23 +268,15 @@ pub fn file_draft_tool(
         move |_ctx: Arc<dyn adk_core::ToolContext>, args: serde_json::Value| {
             let cards = cards.clone();
             let signals = signals.clone();
-            let growth = growth.clone();
-            let site = site.clone();
+            let gate = gate.clone();
             async move {
-                check_running(
-                    &growth,
-                    &site,
-                    "freshness",
-                    JobLevel::Propose,
-                    "file a draft",
-                )
-                .await?;
+                check_gate(&gate, "file_content_draft", JobLevel::Propose).await?;
                 let parsed: FileDraftArgs = serde_json::from_value(args.clone())
                     .map_err(|e| adk_core::AdkError::config(format!("bad draft args: {e}")))?;
                 let title = format!("Content Editor: agent draft for `{}`", parsed.page_slug);
                 let card = cards
                     .file(NewCard::new(
-                        site.as_str(),
+                        gate.site.as_str(),
                         CardKind::Draft,
                         "Content Editor",
                         title,
@@ -290,8 +308,7 @@ pub struct FileReplyArgs {
 pub fn file_reply_draft_tool(
     cards: Arc<CardStore>,
     signals: Arc<dyn SignalStore>,
-    growth: Arc<Growth>,
-    site: String,
+    gate: Gate,
 ) -> FunctionTool {
     FunctionTool::new(
         "file_reply_draft",
@@ -299,16 +316,15 @@ pub fn file_reply_draft_tool(
         move |_ctx: Arc<dyn adk_core::ToolContext>, args: serde_json::Value| {
             let cards = cards.clone();
             let signals = signals.clone();
-            let growth = growth.clone();
-            let site = site.clone();
+            let gate = gate.clone();
             async move {
-                check_running(&growth, &site, "social", JobLevel::Propose, "file a draft").await?;
+                check_gate(&gate, "file_reply_draft", JobLevel::Propose).await?;
                 let parsed: FileReplyArgs = serde_json::from_value(args.clone())
                     .map_err(|e| adk_core::AdkError::config(format!("bad reply args: {e}")))?;
                 let title = format!("Reputation Manager: reply draft for {}", parsed.platform);
                 let card = cards
                     .file(NewCard::new(
-                        site.as_str(),
+                        gate.site.as_str(),
                         CardKind::Draft,
                         "Reputation Manager",
                         title,
@@ -342,8 +358,7 @@ pub struct FileFollowupArgs {
 pub fn file_followup_tool(
     cards: Arc<CardStore>,
     signals: Arc<dyn SignalStore>,
-    growth: Arc<Growth>,
-    site: String,
+    gate: Gate,
 ) -> FunctionTool {
     FunctionTool::new(
         "file_followup",
@@ -351,16 +366,15 @@ pub fn file_followup_tool(
         move |_ctx: Arc<dyn adk_core::ToolContext>, args: serde_json::Value| {
             let cards = cards.clone();
             let signals = signals.clone();
-            let growth = growth.clone();
-            let site = site.clone();
+            let gate = gate.clone();
             async move {
-                check_running(&growth, &site, "nurture", JobLevel::Propose, "file a draft").await?;
+                check_gate(&gate, "file_followup", JobLevel::Propose).await?;
                 let parsed: FileFollowupArgs = serde_json::from_value(args.clone())
                     .map_err(|e| adk_core::AdkError::config(format!("bad followup args: {e}")))?;
                 let title = format!("Sales Rep: follow up with lead {}", parsed.lead_ref);
                 let card = cards
                     .file(NewCard::new(
-                        site.as_str(),
+                        gate.site.as_str(),
                         CardKind::Draft,
                         "Sales Rep",
                         title,
@@ -390,8 +404,7 @@ pub struct FileAnswerArgs {
 pub fn file_answer_draft_tool(
     cards: Arc<CardStore>,
     signals: Arc<dyn SignalStore>,
-    growth: Arc<Growth>,
-    site: String,
+    gate: Gate,
 ) -> FunctionTool {
     FunctionTool::new(
         "file_answer_draft",
@@ -399,23 +412,15 @@ pub fn file_answer_draft_tool(
         move |_ctx: Arc<dyn adk_core::ToolContext>, args: serde_json::Value| {
             let cards = cards.clone();
             let signals = signals.clone();
-            let growth = growth.clone();
-            let site = site.clone();
+            let gate = gate.clone();
             async move {
-                check_running(
-                    &growth,
-                    &site,
-                    "owner-questions",
-                    JobLevel::Propose,
-                    "file a draft",
-                )
-                .await?;
+                check_gate(&gate, "file_answer_draft", JobLevel::Propose).await?;
                 let parsed: FileAnswerArgs = serde_json::from_value(args.clone())
                     .map_err(|e| adk_core::AdkError::config(format!("bad answer args: {e}")))?;
                 let title = "Chief of Staff: answer draft for an escalation".to_string();
                 let card = cards
                     .file(NewCard::new(
-                        site.as_str(),
+                        gate.site.as_str(),
                         CardKind::Draft,
                         "Chief of Staff",
                         title,
@@ -439,26 +444,18 @@ pub struct RetrieveArgs {
 }
 
 /// A tool quoting the site's corpus: the Steward's memory.
-pub fn retrieve_tool(corpus: Arc<Corpus>, growth: Arc<Growth>, site: String) -> FunctionTool {
+pub fn retrieve_tool(corpus: Arc<Corpus>, gate: Gate) -> FunctionTool {
     FunctionTool::new(
         "retrieve_chunks",
         "Quotes the site's own pages for a question. Returns the top chunks with documents and sources.",
         move |_ctx: Arc<dyn adk_core::ToolContext>, args: serde_json::Value| {
             let corpus = corpus.clone();
-            let growth = growth.clone();
-            let site = site.clone();
+            let gate = gate.clone();
             async move {
-                check_running(
-                    &growth,
-                    &site,
-                    "owner-questions",
-                    JobLevel::Observe,
-                    "quote the corpus",
-                )
-                .await?;
+                check_gate(&gate, "retrieve_chunks", JobLevel::Observe).await?;
                 let parsed: RetrieveArgs = serde_json::from_value(args)
                     .map_err(|e| adk_core::AdkError::config(format!("bad retrieve args: {e}")))?;
-                let hits = agentrix_site_concierge::retrieve(&corpus, &site, &parsed.query, 3)
+                let hits = agentrix_site_concierge::retrieve(&corpus, &gate.site, &parsed.query, 3)
                     .await
                     .map_err(|e| adk_core::AdkError::config(e.to_string()))?;
                 Ok(serde_json::json!({
@@ -488,8 +485,16 @@ pub fn build_runners(
     sessions: Arc<dyn adk_session::SessionService>,
     model: Arc<dyn Llm>,
     signals: Arc<dyn SignalStore>,
+    quiet: Option<QuietHours>,
 ) -> anyhow::Result<Vec<(String, Arc<Runner>)>> {
     let partition: PartitionId = format!("{app}.back-office").into();
+    let gate = |job: &'static str| Gate {
+        growth: stores.growth.clone(),
+        freeze: stores.freeze.clone(),
+        quiet,
+        site: site.to_string(),
+        job,
+    };
     let growth_agent = LlmAgentBuilder::new("content_editor")
         .description("Closes content gaps with held drafts")
         .instruction(
@@ -506,9 +511,7 @@ pub fn build_runners(
                 NextWork {
                     signals: signals.clone(),
                     partition: partition.clone(),
-                    growth: stores.growth.clone(),
-                    site: site.to_string(),
-                    job: "freshness",
+                    gate: gate("freshness"),
                     kind: "content_gap",
                 },
                 "next_gap",
@@ -519,8 +522,7 @@ pub fn build_runners(
             Arc::new(file_draft_tool(
                 stores.cards.clone(),
                 signals.clone(),
-                stores.growth.clone(),
-                site.to_string(),
+                gate("freshness"),
             )) as Arc<dyn adk_core::Tool>,
         )
         .tool(
@@ -528,9 +530,7 @@ pub fn build_runners(
                 NextWork {
                     signals: signals.clone(),
                     partition: partition.clone(),
-                    growth: stores.growth.clone(),
-                    site: site.to_string(),
-                    job: "social",
+                    gate: gate("social"),
                     kind: "review_seen",
                 },
                 "next_review",
@@ -541,8 +541,7 @@ pub fn build_runners(
             Arc::new(file_reply_draft_tool(
                 stores.cards.clone(),
                 signals.clone(),
-                stores.growth.clone(),
-                site.to_string(),
+                gate("social"),
             )) as Arc<dyn adk_core::Tool>,
         )
         .build()
@@ -568,9 +567,7 @@ pub fn build_runners(
                 NextWork {
                     signals: signals.clone(),
                     partition: partition.clone(),
-                    growth: stores.growth.clone(),
-                    site: site.to_string(),
-                    job: "nurture",
+                    gate: gate("nurture"),
                     kind: "lead_captured",
                 },
                 "next_lead",
@@ -590,8 +587,7 @@ pub fn build_runners(
         .tool(Arc::new(file_followup_tool(
             stores.cards.clone(),
             signals.clone(),
-            stores.growth.clone(),
-            site.to_string(),
+            gate("nurture"),
         )) as Arc<dyn adk_core::Tool>)
         .build()
         .map_err(|e| anyhow::anyhow!("{e}"))?;
@@ -625,9 +621,7 @@ pub fn build_runners(
                 NextWork {
                     signals: signals.clone(),
                     partition: partition.clone(),
-                    growth: stores.growth.clone(),
-                    site: site.to_string(),
-                    job: "owner-questions",
+                    gate: gate("owner-questions"),
                     kind: "support_escalation",
                 },
                 "next_escalation",
@@ -635,15 +629,14 @@ pub fn build_runners(
             )) as Arc<dyn adk_core::Tool>,
         )
         .tool(
-            Arc::new(retrieve_tool(stores.corpus.clone(), stores.growth.clone(), site.to_string()))
+            Arc::new(retrieve_tool(stores.corpus.clone(), gate("owner-questions")))
                 as Arc<dyn adk_core::Tool>,
         )
         .tool(
             Arc::new(file_answer_draft_tool(
                 stores.cards.clone(),
                 signals,
-                stores.growth.clone(),
-                site.to_string(),
+                gate("owner-questions"),
             )) as Arc<dyn adk_core::Tool>,
         )
         .build()

@@ -151,6 +151,7 @@ async fn start_kernel(
     stores: &ProductStores,
     kernel_stores: &workflows::KernelStores,
     model: Arc<dyn adk_core::Llm>,
+    quiet: Option<agentrix_site_defense::QuietHours>,
 ) -> (adk_kernel::Kernel, SignalSink) {
     let sessions: Arc<dyn adk_session::SessionService> =
         Arc::new(adk_session::InMemorySessionService::new());
@@ -161,6 +162,7 @@ async fn start_kernel(
         sessions,
         model,
         kernel_stores.signals.clone(),
+        quiet,
     )
     .unwrap();
     let current = agentrix_site_edge::Current::new(
@@ -219,7 +221,7 @@ async fn content_gap_wakes_the_editor_end_to_end() {
         ),
         adk_model::ScriptedResponse::text("draft filed"),
     ]);
-    let (kernel, sink) = start_kernel(&config, &stores, &kernel_stores, model).await;
+    let (kernel, sink) = start_kernel(&config, &stores, &kernel_stores, model, None).await;
     let since = Instant::now();
     match sink
         .emit(envelope(&config.site, gap_kind(), "concierge"))
@@ -262,7 +264,7 @@ async fn review_seen_wakes_replies_end_to_end() {
         ),
         adk_model::ScriptedResponse::text("reply drafted"),
     ]);
-    let (kernel, sink) = start_kernel(&config, &stores, &kernel_stores, model).await;
+    let (kernel, sink) = start_kernel(&config, &stores, &kernel_stores, model, None).await;
     let since = Instant::now();
     signals::emit_review(
         &sink,
@@ -307,7 +309,7 @@ async fn escalation_wakes_the_steward_end_to_end() {
         ),
         adk_model::ScriptedResponse::text("answer drafted"),
     ]);
-    let (kernel, sink) = start_kernel(&config, &stores, &kernel_stores, model).await;
+    let (kernel, sink) = start_kernel(&config, &stores, &kernel_stores, model, None).await;
     let since = Instant::now();
     match sink
         .emit(envelope(&config.site, escalation_kind(), "concierge"))
@@ -363,6 +365,7 @@ async fn captured_lead_runs_the_outreach_team_end_to_end() {
         sessions.clone(),
         model,
         kernel_stores.signals.clone(),
+        None,
     )
     .unwrap();
     let revenue = runners
@@ -434,6 +437,7 @@ async fn paused_freshness_files_nothing_and_waits() {
         sessions.clone(),
         model,
         kernel_stores.signals.clone(),
+        None,
     )
     .unwrap();
     let growth = runners
@@ -473,5 +477,144 @@ async fn paused_freshness_files_nothing_and_waits() {
             .len(),
         1,
         "the gap waits open for resume"
+    );
+}
+
+/// A frozen site refuses its tools: no card files and the signal waits open.
+#[tokio::test]
+async fn frozen_site_files_nothing_and_waits() {
+    use adk_core::{Content, SessionId, UserId};
+    use futures::StreamExt as _;
+
+    let dir = tempfile::tempdir().unwrap();
+    let (config, stores, kernel_stores) = setup(&dir).await;
+    prefile(&kernel_stores, &config, gap_kind()).await;
+    stores.freeze.freeze("demo", "test freeze").await.unwrap();
+    let model = scripted(vec![
+        adk_model::ScriptedResponse::function_call("next_gap", serde_json::json!({})),
+        adk_model::ScriptedResponse::text("The site is frozen."),
+    ]);
+    let sessions: Arc<dyn adk_session::SessionService> =
+        Arc::new(adk_session::InMemorySessionService::new());
+    let runners = agents::build_runners(
+        &config.app,
+        &config.site,
+        &stores,
+        sessions.clone(),
+        model,
+        kernel_stores.signals.clone(),
+        None,
+    )
+    .unwrap();
+    let growth = runners
+        .iter()
+        .find(|(target, _)| target == "growth")
+        .expect("growth runner")
+        .1
+        .clone();
+    let session = sessions
+        .create(adk_session::CreateRequest {
+            app_name: config.app.clone(),
+            user_id: "owner".to_string(),
+            session_id: None,
+            state: Default::default(),
+        })
+        .await
+        .unwrap();
+    let mut events = growth
+        .run(
+            UserId::new("owner").unwrap(),
+            SessionId::new(session.id().to_string()).unwrap(),
+            Content::new("user").with_text("{\"job\": \"freshness\"}"),
+        )
+        .await
+        .unwrap();
+    while let Some(event) = events.next().await {
+        event.unwrap();
+    }
+    let open = stores.cards.list_open(&config.site).await.unwrap();
+    assert!(
+        open.iter().all(|card| card.role != "Content Editor"),
+        "a frozen site files nothing"
+    );
+    assert_eq!(
+        open_of(&kernel_stores, &config.app, "content_gap")
+            .await
+            .len(),
+        1,
+        "the gap waits open for unfreeze"
+    );
+}
+
+/// Quiet hours defer the tools: no card files and the signal waits open.
+#[tokio::test]
+async fn quiet_hours_defer_the_tools() {
+    use adk_core::{Content, SessionId, UserId};
+    use chrono::Timelike as _;
+    use futures::StreamExt as _;
+
+    let dir = tempfile::tempdir().unwrap();
+    let (config, stores, kernel_stores) = setup(&dir).await;
+    prefile(&kernel_stores, &config, gap_kind()).await;
+    let now = chrono::Utc::now();
+    let mins = now.hour() as u16 * 60 + now.minute() as u16;
+    let quiet = agentrix_site_defense::QuietHours {
+        start_min: (mins + 1_439) % 1_440,
+        end_min: (mins + 2) % 1_440,
+    };
+    assert!(quiet.defers(now), "the test window covers now");
+    let model = scripted(vec![
+        adk_model::ScriptedResponse::function_call("next_gap", serde_json::json!({})),
+        adk_model::ScriptedResponse::text("Quiet hours; trying later."),
+    ]);
+    let sessions: Arc<dyn adk_session::SessionService> =
+        Arc::new(adk_session::InMemorySessionService::new());
+    let runners = agents::build_runners(
+        &config.app,
+        &config.site,
+        &stores,
+        sessions.clone(),
+        model,
+        kernel_stores.signals.clone(),
+        Some(quiet),
+    )
+    .unwrap();
+    let growth = runners
+        .iter()
+        .find(|(target, _)| target == "growth")
+        .expect("growth runner")
+        .1
+        .clone();
+    let session = sessions
+        .create(adk_session::CreateRequest {
+            app_name: config.app.clone(),
+            user_id: "owner".to_string(),
+            session_id: None,
+            state: Default::default(),
+        })
+        .await
+        .unwrap();
+    let mut events = growth
+        .run(
+            UserId::new("owner").unwrap(),
+            SessionId::new(session.id().to_string()).unwrap(),
+            Content::new("user").with_text("{\"job\": \"freshness\"}"),
+        )
+        .await
+        .unwrap();
+    while let Some(event) = events.next().await {
+        event.unwrap();
+    }
+    let open = stores.cards.list_open(&config.site).await.unwrap();
+    assert!(
+        open.iter().all(|card| card.role != "Content Editor"),
+        "quiet hours file nothing"
+    );
+    assert_eq!(
+        open_of(&kernel_stores, &config.app, "content_gap")
+            .await
+            .len(),
+        1,
+        "the gap waits open for the window's end"
     );
 }

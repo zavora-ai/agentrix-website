@@ -142,6 +142,7 @@ async fn runners_and_kernel_build_with_every_target() {
         sessions,
         model,
         kernel_stores.signals.clone(),
+        None,
     )
     .unwrap();
     let targets: Vec<&str> = runners.iter().map(|(target, _)| target.as_str()).collect();
@@ -217,6 +218,7 @@ async fn growth_runner_files_a_draft_live() {
         sessions,
         model,
         kernel_stores.signals.clone(),
+        None,
     )
     .unwrap();
     let growth = runners

@@ -17,7 +17,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use agentrix_site_concierge::Corpus;
-use agentrix_site_defense::Freeze;
+use agentrix_site_defense::{Freeze, QuietHours};
 use agentrix_site_edge::{Current, RateLimit, build_release, business_site, router_on};
 use agentrix_site_growth::Growth;
 use agentrix_site_inbox::{Card, CardKind, CardStore, Decision, Execute, NewCard};
@@ -203,6 +203,7 @@ pub async fn serve(config: &ServeConfig) -> anyhow::Result<()> {
         sessions,
         model,
         kernel_stores.signals.clone(),
+        QuietHours::from_env(),
     )?;
     let workflows = Arc::new(workflows::SiteWorkflows::new(
         config.site.clone(),
