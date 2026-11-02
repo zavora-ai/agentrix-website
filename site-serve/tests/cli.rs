@@ -11,9 +11,7 @@ use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use tower::ServiceExt as _;
 
-async fn setup(
-    dir: &tempfile::TempDir,
-) -> (Arc<CliState>, ProductStores, workflows::KernelStores) {
+async fn setup(dir: &tempfile::TempDir) -> (Arc<CliState>, ProductStores, workflows::KernelStores) {
     let data = dir.path().join("data");
     std::fs::create_dir_all(&data).unwrap();
     let stores = ProductStores::open(&data).await.unwrap();
@@ -165,4 +163,51 @@ async fn verified_agents_hold_orders_and_capture_consented_leads() {
     assert!(state.tokens.revoke("demo", &token).await.unwrap());
     let (status, _) = call(&state, Some(&token), "order arabica-250g 1").await;
     assert_eq!(status, StatusCode::FORBIDDEN);
+}
+
+/// The price watch files gaps for drifts and stays silent on match; orders
+/// report their own state.
+#[tokio::test]
+async fn pricecheck_files_drifts_and_orders_confirm() {
+    let dir = tempfile::tempdir().unwrap();
+    let (state, stores, kernel_stores) = setup(&dir).await;
+    let token = state.tokens.issue("demo", "stall-7").await.unwrap();
+
+    let (status, body) = call(&state, Some(&token), "pricecheck").await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(body["text"].as_str().unwrap().contains("match"));
+
+    // Move the list price: the next check files the drift.
+    stores
+        .commerce
+        .set_stock("demo", "arabica-250g", 8, 900_000_000, "KES")
+        .await
+        .unwrap();
+    let (status, body) = call(&state, Some(&token), "pricecheck").await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(body["text"].as_str().unwrap().contains("1 drift"));
+    let gaps = kernel_stores
+        .signals
+        .list(
+            &adk_kernel::charter::SignalFilter::default()
+                .partition("demo.back-office")
+                .kind("content_gap")
+                .open(true),
+        )
+        .await
+        .unwrap();
+    assert_eq!(gaps.len(), 1);
+    assert!(format!("{:?}", gaps[0].signal.kind).contains("arabica-250g"));
+
+    let (_, order) = call(&state, Some(&token), "order mango-crate 1").await;
+    let id = order["text"]
+        .as_str()
+        .unwrap()
+        .split_whitespace()
+        .nth(1)
+        .unwrap()
+        .to_string();
+    let (status, body) = call(&state, Some(&token), &format!("order-status {id}")).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(body["text"].as_str().unwrap().contains("Held"));
 }

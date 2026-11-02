@@ -111,6 +111,14 @@ fn bearer_of(headers: &HeaderMap) -> Option<&str> {
         .filter(|token| !token.is_empty())
 }
 
+fn answer(ok: bool, text: String) -> CliResponse {
+    CliResponse {
+        ok,
+        text,
+        data: serde_json::Value::Null,
+    }
+}
+
 fn refused(command: &str) -> CliResponse {
     CliResponse {
         ok: false,
@@ -151,7 +159,7 @@ async fn dispatch(
     match *command {
         "help" => CliResponse {
             ok: true,
-            text: "help | list | get <slug> | twin <slug> | ask <slug> <question> | stock <sku> || verified: order <sku> <qty> | support <message> | lead <channel> <contact> consent <uuid,...> | token status".into(),
+            text: "help | list | get <slug> | twin <slug> | ask <slug> <question> | stock <sku> || verified: order <sku> <qty> | order-status <id> | pricecheck | support <message> | lead <channel> <contact> consent <uuid,...> | token status".into(),
         data: serde_json::Value::Null,
         },
         "list" | "get" | "twin" => run_command(release, &text),
@@ -168,12 +176,14 @@ async fn dispatch(
             data: serde_json::Value::Null,
             }
         }
-        "order" | "support" | "lead" => {
+        "order" | "order-status" | "pricecheck" | "support" | "lead" => {
             let Some(label) = state.tokens.verified_label(&state.site, bearer).await else {
                 return refused(command);
             };
             match *command {
                 "order" => place_order(state, args).await,
+                "order-status" => order_status(state, args).await,
+                "pricecheck" => pricecheck(state).await,
                 "support" => open_support(state, &label, args).await,
                 _ => capture_lead(state, args).await,
             }
@@ -289,6 +299,120 @@ async fn place_order(state: &CliState, args: &[&str]) -> CliResponse {
             text: error.to_string(),
             data: serde_json::Value::Null,
         },
+    }
+}
+
+/// A price drift: the page's price fact disagrees with the price list.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PriceDrift {
+    /// The product slug.
+    pub sku: String,
+    /// What disagrees.
+    pub detail: String,
+}
+
+/// Parses a price fact (`Price: KES 850.`) into currency and whole units.
+fn parse_price_fact(text: &str) -> Option<(String, i64)> {
+    let rest = text.strip_prefix("Price: ")?.strip_suffix('.')?;
+    let (currency, amount) = rest.split_once(' ')?;
+    let amount: i64 = amount.replace(',', "").parse().ok()?;
+    Some((currency.to_string(), amount))
+}
+
+/// Compares every product page's price fact against the commerce price list:
+/// the products watching their prices.
+pub async fn check_prices(
+    commerce: &Commerce,
+    site: &str,
+    release: &agentrix_site_edge::Release,
+) -> Vec<PriceDrift> {
+    let mut drifts = Vec::new();
+    for page in &release.pages {
+        if page.kind != awp_types::ContentKind::Product {
+            continue;
+        }
+        let fact = page.facts.iter().find(|fact| fact.id == "price");
+        let stock = commerce.stock_of(site, &page.slug).await.ok().flatten();
+        let detail = match (fact, stock) {
+            (None, _) => format!("{} has no price fact", page.slug),
+            (_, None) => format!("{} has no price-list row", page.slug),
+            (Some(fact), Some(stock)) => match parse_price_fact(&fact.text) {
+                None => format!("{} price fact is unreadable: {}", page.slug, fact.text),
+                Some((currency, amount))
+                    if currency != stock.currency || amount * 1_000_000 != stock.unit_micro =>
+                {
+                    format!(
+                        "{} page says {} {}, list says {} micro-{}",
+                        page.slug, currency, amount, stock.unit_micro, stock.currency
+                    )
+                }
+                _ => continue,
+            },
+        };
+        drifts.push(PriceDrift {
+            sku: page.slug.clone(),
+            detail,
+        });
+    }
+    drifts
+}
+
+/// Runs the price watch and files a content gap per drift, waking the Content
+/// Editor to fix the page.
+async fn pricecheck(state: &CliState) -> CliResponse {
+    let release = state.current.get();
+    let drifts = check_prices(&state.commerce, &state.site, &release).await;
+    if drifts.is_empty() {
+        return answer(true, "prices match the list".into());
+    }
+    for (n, drift) in drifts.iter().enumerate() {
+        let signal = agentrix_site_concierge::Signal::ContentGap(agentrix_site_inbox::GapSignal {
+            id: format!("price-{n}"),
+            topic: format!("price drift on {}", drift.sku),
+            question_count: 1,
+            samples: vec![drift.detail.clone()],
+        });
+        let envelope = awp_types::Signal {
+            id: uuid::Uuid::new_v4(),
+            kind: crate::signals::translate(&signal, "cli"),
+            emitted_by: format!("urn:adk:agent:{}/pricewatch", state.site),
+            emitted_at: chrono::Utc::now(),
+        };
+        if let Err(error) = state.sink.emit(envelope).await {
+            return answer(false, error.to_string());
+        }
+    }
+    answer(
+        true,
+        format!(
+            "{} drift{} filed for the Content Editor",
+            drifts.len(),
+            if drifts.len() == 1 { "" } else { "s" }
+        ),
+    )
+}
+
+/// Reads one order back: the product confirming its own order.
+async fn order_status(state: &CliState, args: &[&str]) -> CliResponse {
+    let [id] = args else {
+        return answer(false, "usage: order-status <id>".into());
+    };
+    match state.commerce.order_by_id(id).await {
+        Ok(Some(order)) => answer(
+            true,
+            format!(
+                "{}: {:?}, {} x {} ({} micro-{}), card {}",
+                order.id,
+                order.state,
+                order.qty,
+                order.sku,
+                order.total_micro,
+                order.currency,
+                order.card_id
+            ),
+        ),
+        Ok(None) => answer(false, format!("unknown order {id}")),
+        Err(error) => answer(false, error.to_string()),
     }
 }
 
