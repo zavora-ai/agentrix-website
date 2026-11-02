@@ -393,6 +393,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "agentrix-site-migrate"
+version = "0.1.0"
+dependencies = [
+ "agentrix-site-defense",
+ "agentrix-site-edge",
+ "agentrix-site-inbox",
+ "agentrix-site-release",
+ "awp-types",
+ "chrono",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "thiserror",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "agentrix-site-release"
 version = "0.1.0"
 dependencies = [
@@ -426,6 +445,7 @@ dependencies = [
  "agentrix-site-growth",
  "agentrix-site-host",
  "agentrix-site-inbox",
+ "agentrix-site-migrate",
  "agentrix-site-release",
  "anyhow",
  "async-trait",

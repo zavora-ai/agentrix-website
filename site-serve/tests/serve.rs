@@ -525,3 +525,60 @@ async fn shop_template_seeds_products_and_charters() {
         awp_types::SiteKind::Media
     );
 }
+
+/// The morning briefing files its digest card, and its trigger fires daily
+/// with a missed tick firing once.
+#[tokio::test]
+async fn morning_briefing_files_and_fires_daily() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = config(&dir);
+    std::fs::create_dir_all(&config.data).unwrap();
+    let stores = ProductStores::open(&config.data).await.unwrap();
+    seed_demo(&stores, &config.site, "business").await.unwrap();
+    let current = Current::new(
+        stores
+            .releases
+            .current(&config.site)
+            .await
+            .unwrap()
+            .unwrap(),
+    );
+    let workflows = SiteWorkflows::new(
+        config.site.clone(),
+        current,
+        stores.releases.clone(),
+        stores.cards.clone(),
+        stores.growth.clone(),
+        stores.freeze.clone(),
+    );
+    assert!(adk_server::background::WorkflowExecutor::has_workflow(
+        &workflows,
+        "website.steward.briefing"
+    ));
+    let token = tokio_util::sync::CancellationToken::new();
+    let out = adk_server::background::WorkflowExecutor::execute(
+        &workflows,
+        "website.steward.briefing",
+        HashMap::new(),
+        token.clone(),
+    )
+    .await
+    .unwrap();
+    assert!(out.get("card").is_some());
+    let open = stores.cards.list_open(&config.site).await.unwrap();
+    assert!(
+        open.iter()
+            .any(|card| card.title.starts_with("Morning briefing")),
+        "the briefing cards every morning"
+    );
+    let partition: adk_kernel::PartitionId = "demo.back-office".into();
+    let trigger = workflows::briefing_trigger("demo", workflows::site_id(), &partition);
+    assert_eq!(trigger.name, "site.briefing");
+    match &trigger.wake {
+        adk_kernel::Wake::Cron { expr, missed } => {
+            assert_eq!(expr, "0 0 7 * * *");
+            assert_eq!(missed, &adk_core::schedule::MissedFirePolicy::FireOnce);
+        }
+        other => panic!("the briefing must stay cron, got {other:?}"),
+    }
+}

@@ -14,7 +14,7 @@ use agentrix_site_concierge::{
     Corpus, Visitor, VisitorEvent, answer, emit, signals::Signal as ProductSignal,
 };
 use awp_types::{Bounded, Channel, ContactRef, LeadRef, ReasonCode, Signal, SignalKind};
-use axum::{Json, Router, extract::State, routing::post};
+use axum::{Json, Router, extract::State, http::StatusCode, routing::post};
 use serde::{Deserialize, Serialize};
 
 /// Translates a product signal into its kernel kind. The kind names match the
@@ -166,9 +166,10 @@ pub struct VisitorReply {
 /// Answers a visitor turn and files its signals: a miss becomes a content gap,
 /// three running also escalate, shared contacts become leads.
 async fn visitor_message(
-    State(intake): State<Arc<Intake>>,
+    State(intake): State<Arc<IntakeState>>,
     Json(turn): Json<VisitorMessage>,
-) -> Result<Json<VisitorReply>, String> {
+) -> Result<Json<VisitorReply>, (StatusCode, String)> {
+    let intake = &intake.visitor;
     let visitor = if turn.visitor.is_empty() {
         Visitor::mint(&intake.site)
     } else {
@@ -179,7 +180,7 @@ async fn visitor_message(
     };
     let reply = answer(&intake.corpus, &intake.site, &visitor, &turn.question)
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     let streak = if reply.grounded {
         0
     } else {
@@ -192,7 +193,7 @@ async fn visitor_message(
     };
     let filed = emit_event(&intake.sink, &intake.site, &visitor.id, &event)
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     Ok(Json(VisitorReply {
         text: reply.text,
         grounded: reply.grounded,
@@ -203,20 +204,74 @@ async fn visitor_message(
 
 /// The review webhook: files the sighting and wakes the Reputation Manager.
 async fn review_webhook(
-    State(intake): State<Arc<Intake>>,
+    State(intake): State<Arc<IntakeState>>,
     Json(sighting): Json<ReviewIntake>,
-) -> Result<Json<serde_json::Value>, String> {
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    let intake = &intake.visitor;
     let outcome = emit_review(&intake.sink, &intake.site, &sighting)
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     Ok(Json(serde_json::json!({ "filed": format!("{outcome:?}") })))
 }
 
-/// The intake routes over shared `state`: visitor chat and the review webhook.
-pub fn intake_routes(state: Arc<Intake>) -> Router {
+/// What the migration intake touches.
+#[derive(Clone)]
+pub struct MigrateState {
+    /// The site served.
+    pub site: String,
+    /// Go-live cards.
+    pub cards: Arc<agentrix_site_inbox::CardStore>,
+}
+
+/// A migration request: public URLs in, no credentials needed.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MigrateIntake {
+    /// Up to 20 public page URLs to crawl.
+    pub urls: Vec<String>,
+}
+
+/// The migration door: crawls the public URLs, scores parity, and files the
+/// go-live card for approval. Credential-free by construction — the fetch
+/// carries no auth.
+async fn migrate_webhook(
+    State(intake): State<Arc<IntakeState>>,
+    Json(request): Json<MigrateIntake>,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    let migrate = &intake.migrate;
+    if request.urls.is_empty() || request.urls.len() > 20 {
+        return Err((StatusCode::BAD_REQUEST, "send 1 to 20 urls".into()));
+    }
+    let fetch = agentrix_site_migrate::HttpFetch::new()
+        .map_err(|e| (StatusCode::BAD_GATEWAY, e.to_string()))?;
+    let evidence = agentrix_site_migrate::crawl(&fetch, &request.urls)
+        .map_err(|e| (StatusCode::BAD_GATEWAY, e.to_string()))?;
+    let (candidate, report) = agentrix_site_migrate::migrate(&evidence);
+    let card =
+        agentrix_site_migrate::file_go_live(&migrate.cards, &migrate.site, &candidate, &report)
+            .await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    Ok(Json(serde_json::json!({
+        "parity": report.overall,
+        "card": card.id,
+        "digest": candidate.release.digest,
+    })))
+}
+
+/// Everything the intake routes touch.
+#[derive(Clone)]
+pub struct IntakeState {
+    /// Visitor chat and review sightings.
+    pub visitor: Arc<Intake>,
+    /// The migration door.
+    pub migrate: Arc<MigrateState>,
+}
+
+/// The intake routes: visitor chat, the review webhook and the migration door.
+pub fn intake_routes(state: Arc<IntakeState>) -> Router {
     Router::new()
         .route("/api/visitor/message", post(visitor_message))
         .route("/api/intake/review", post(review_webhook))
+        .route("/api/intake/migrate", post(migrate_webhook))
         .with_state(state)
 }
 

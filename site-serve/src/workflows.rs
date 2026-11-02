@@ -32,6 +32,8 @@ pub const PROBE_WORKFLOW: &str = "website.guardian.probe";
 pub const WATCH_WORKFLOW: &str = "website.guardian.watch";
 /// The weekly digest workflow.
 pub const DIGEST_WORKFLOW: &str = "website.steward.digest";
+/// The morning briefing: overnight decisions, spend and breaches, daily.
+pub const BRIEFING_WORKFLOW: &str = "website.steward.briefing";
 
 /// The guarded workflows: probe, watch and digest over the product stores, each
 /// execution checked against freeze and quiet hours first.
@@ -82,7 +84,7 @@ impl WorkflowExecutor for SiteWorkflows {
     fn has_workflow(&self, workflow_id: &str) -> bool {
         matches!(
             workflow_id,
-            PROBE_WORKFLOW | WATCH_WORKFLOW | DIGEST_WORKFLOW
+            PROBE_WORKFLOW | WATCH_WORKFLOW | DIGEST_WORKFLOW | BRIEFING_WORKFLOW
         )
     }
 
@@ -146,9 +148,78 @@ impl WorkflowExecutor for SiteWorkflows {
                     json!({ "card": card.id, "spent": doc.spent_micro, "breaches": doc.breaches.len() }),
                 )
             }
+            BRIEFING_WORKFLOW => {
+                let open = self
+                    .cards
+                    .list_open(&self.site)
+                    .await
+                    .map_err(|e| e.to_string())?;
+                let (cap, spent, _) = self
+                    .growth
+                    .budget(&self.site)
+                    .await
+                    .map_err(|e| e.to_string())?;
+                let breaches = self
+                    .growth
+                    .breaches(&self.site)
+                    .await
+                    .map_err(|e| e.to_string())?;
+                let card = self
+                    .cards
+                    .file(agentrix_site_inbox::NewCard::new(
+                        self.site.as_str(),
+                        agentrix_site_inbox::CardKind::Digest,
+                        "Analyst",
+                        format!(
+                            "Morning briefing: {} awaiting, {} of {} spent, {} breaching",
+                            open.len(),
+                            spent,
+                            cap,
+                            breaches.len()
+                        ),
+                        serde_json::json!({
+                            "awaiting": open.iter().map(|card| &card.id).collect::<Vec<_>>(),
+                            "spent_micro": spent,
+                            "cap_micro": cap,
+                            "breaches": breaches.len(),
+                        }),
+                    ))
+                    .await
+                    .map_err(|e| e.to_string())?;
+                Ok(json!({ "card": card.id, "awaiting": open.len() }))
+            }
             _ => Err(format!("unknown workflow {workflow_id}")),
         }
     }
+}
+
+/// The daily 07:00 briefing trigger: missed mornings fire once, never skip.
+pub fn briefing_trigger(
+    app: &str,
+    site: uuid::Uuid,
+    partition: &adk_kernel::PartitionId,
+) -> adk_kernel::Trigger {
+    let run = adk_core::NewRun::new(
+        "background",
+        app,
+        format!("site:{app}"),
+        BRIEFING_WORKFLOW,
+        serde_json::json!({
+            "site": site,
+            "job": "briefing",
+            "playbook": "morning-briefing",
+            "text": "File the morning briefing.",
+        }),
+    );
+    adk_kernel::Trigger::new(
+        "site.briefing",
+        adk_kernel::Wake::Cron {
+            expr: "0 0 7 * * *".to_string(),
+            missed: MissedFirePolicy::FireOnce,
+        },
+        run,
+    )
+    .with_partition(partition.clone())
 }
 
 fn env_u32(name: &str, fallback: u32) -> u32 {
@@ -317,6 +388,7 @@ pub async fn build_kernel(
     for process in standing_triggers(app, site, &partition) {
         builder = builder.trigger(process.trigger);
     }
+    builder = builder.trigger(briefing_trigger(app, site, &partition));
     let tracker =
         crate::tracker::site_tracker(site, site_name, growth, charters.clone(), kpis.clone());
     builder = builder.trigger(tracker.trigger(app, "0 0 3 * * *"));

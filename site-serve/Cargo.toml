@@ -15,6 +15,7 @@ agentrix-site-host = { path = "../site-host" }
 agentrix-site-edge = { path = "../site-edge" }
 agentrix-site-growth = { path = "../site-growth" }
 agentrix-site-inbox = { path = "../site-inbox" }
+agentrix-site-migrate = { path = "../site-migrate" }
 agentrix-site-release = { path = "../site-release" }
 adk-agent = { path = "../../adk-rust/adk-agent" }
 adk-core = { path = "../../adk-rust/adk-core" }

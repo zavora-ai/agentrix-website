@@ -374,6 +374,13 @@ pub async fn serve(config: &ServeConfig) -> anyhow::Result<()> {
         corpus: stores.corpus.clone(),
         sink,
     });
+    let intake_state = Arc::new(signals::IntakeState {
+        visitor: intake.clone(),
+        migrate: Arc::new(signals::MigrateState {
+            site: config.site.clone(),
+            cards: stores.cards.clone(),
+        }),
+    });
 
     let shop_state = Arc::new(shop::ShopState {
         current: current.clone(),
@@ -388,7 +395,7 @@ pub async fn serve(config: &ServeConfig) -> anyhow::Result<()> {
         tokens: cli_state.tokens.clone(),
     });
     let app = router_on(&current, RateLimit::default())
-        .merge(signals::intake_routes(intake))
+        .merge(signals::intake_routes(intake_state))
         .merge(cli::cli_routes(cli_state))
         .merge(shop::shop_routes(shop_state))
         .merge(console::console_routes(console_state));
