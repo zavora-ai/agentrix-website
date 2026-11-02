@@ -90,7 +90,17 @@ pub fn migrate(evidence: &Evidence) -> (Candidate, ParityReport) {
                 text: sentence.trim_end_matches('.').to_string() + ".",
             })
             .collect();
+        let kind = if !page.products.is_empty() {
+            awp_types::ContentKind::Product
+        } else if page.url.contains("/blog/") || page.url.contains("/post/") {
+            awp_types::ContentKind::Post
+        } else if page.url.contains("/news/") || page.url.contains("/article/") {
+            awp_types::ContentKind::Article
+        } else {
+            awp_types::ContentKind::Page
+        };
         pages.push(Page {
+            kind,
             slug: page.slug.clone(),
             title: page.title.clone(),
             intro: format!("Migrated from {}.", page.url),

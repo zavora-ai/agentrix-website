@@ -9,6 +9,7 @@ description = "Agentrix Website Phase 9: credential-free migration from public e
 
 [dependencies]
 agentrix-site-edge = { path = "../site-edge" }
+awp-types = { path = "../../adk-rust/awp-types" }
 agentrix-site-defense = { path = "../site-defense" }
 agentrix-site-inbox = { path = "../site-inbox" }
 agentrix-site-release = { path = "../site-release" }
