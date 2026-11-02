@@ -8,6 +8,7 @@ description = "Agentrix Website Phase 1: read-only dual site — one release bun
 [workspace]
 
 [dependencies]
+awp-types = { path = "../../adk-rust/awp-types" }
 axum = { version = "0.8", features = ["macros"] }
 chrono = "0.4"
 serde = { version = "1.0", features = ["derive"] }

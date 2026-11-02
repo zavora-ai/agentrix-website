@@ -317,9 +317,6 @@ pub async fn build_kernel(
     for process in standing_triggers(app, site, &partition) {
         builder = builder.trigger(process.trigger);
     }
-    crate::tracker::seed_charter(charters.as_ref(), site)
-        .await
-        .map_err(|e| anyhow::anyhow!("{e}"))?;
     let tracker =
         crate::tracker::site_tracker(site, site_name, growth, charters.clone(), kpis.clone());
     builder = builder.trigger(tracker.trigger(app, "0 0 3 * * *"));

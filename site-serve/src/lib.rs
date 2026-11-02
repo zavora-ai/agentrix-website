@@ -18,7 +18,9 @@ use std::sync::Arc;
 
 use agentrix_site_concierge::Corpus;
 use agentrix_site_defense::{Freeze, QuietHours};
-use agentrix_site_edge::{Current, RateLimit, build_release, business_site, router_on};
+use agentrix_site_edge::{
+    Current, RateLimit, blog_site, build_release, business_site, news_site, router_on, shop_site,
+};
 use agentrix_site_growth::Growth;
 use agentrix_site_inbox::{Card, CardKind, CardStore, Decision, Execute, NewCard};
 use agentrix_site_release::{LaunchGate, ReleaseStore};
@@ -33,6 +35,8 @@ pub struct ServeConfig {
     pub app: String,
     /// Site name.
     pub site: String,
+    /// Template seeded on first boot: business, shop, blog or news.
+    pub template: String,
     /// Edge bind address.
     pub addr: String,
     /// Script the model instead of calling Baseten.
@@ -54,6 +58,7 @@ impl ServeConfig {
             data,
             app: "demo".into(),
             site: "demo".into(),
+            template: std::env::var("TEMPLATE").unwrap_or_else(|_| "business".into()),
             addr,
             dry_run,
             baseten_key: std::env::var("BASETEN_API_KEY").ok(),
@@ -120,11 +125,21 @@ impl Execute for AutoApprove {
 /// Seeds the demo site when nothing is served: the business release through the
 /// LaunchGate behind an approved card, its facts as corpus chunks, and a starter
 /// budget. Returns the served digest.
-pub async fn seed_demo(stores: &ProductStores, site: &str) -> anyhow::Result<String> {
+pub async fn seed_demo(
+    stores: &ProductStores,
+    site: &str,
+    template: &str,
+) -> anyhow::Result<String> {
     if let Some(current) = stores.releases.current(site).await.map_err(anyhow_err)? {
         return Ok(current.digest);
     }
-    let release = build_release(business_site(), "business", vec!["seed".into()]);
+    let (pages, name) = match template {
+        "shop" => (shop_site(), "shop"),
+        "blog" => (blog_site(), "blog"),
+        "news" => (news_site(), "news"),
+        _ => (business_site(), "business"),
+    };
+    let release = build_release(pages, name, vec!["seed".into()]);
     let card = stores
         .cards
         .file(NewCard::new(
@@ -206,7 +221,7 @@ pub fn incident_watch(
 pub async fn serve(config: &ServeConfig) -> anyhow::Result<()> {
     std::fs::create_dir_all(&config.data)?;
     let stores = ProductStores::open(&config.data).await?;
-    let digest = seed_demo(&stores, &config.site).await?;
+    let digest = seed_demo(&stores, &config.site, &config.template).await?;
     tracing::info!(digest = %digest[..12.min(digest.len())], "demo site seeded");
     let current = Current::new(
         stores
@@ -274,6 +289,13 @@ pub async fn serve(config: &ServeConfig) -> anyhow::Result<()> {
         kernel_stores.signals.clone(),
         partition,
     );
+    tracker::seed_charter(
+        kernel_stores.charters.as_ref(),
+        workflows::site_id(),
+        tracker::site_kind_for(&config.template),
+    )
+    .await
+    .map_err(anyhow_err)?;
     let probe = Signal {
         id: uuid::Uuid::new_v4(),
         kind: SignalKind::ContentGap {

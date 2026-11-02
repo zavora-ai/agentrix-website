@@ -12,6 +12,7 @@ async fn main() {
     let mut data: PathBuf = "data".into();
     let mut addr = "127.0.0.1:8472".to_string();
     let mut dry_run = false;
+    let mut template: Option<String> = None;
     let mut args = std::env::args().skip(1);
     while let Some(arg) = args.next() {
         match arg.as_str() {
@@ -25,13 +26,19 @@ async fn main() {
                 addr = args.next().unwrap_or_else(|| "127.0.0.1:8472".into());
             }
             "--dry-run" => dry_run = true,
+            "--template" => {
+                template = args.next();
+            }
             other => {
-                eprintln!("unknown argument {other}; use --data/--addr/--dry-run");
+                eprintln!("unknown argument {other}; use --data/--addr/--dry-run/--template");
                 std::process::exit(2);
             }
         }
     }
-    let config = ServeConfig::from_env(data, addr, dry_run);
+    let mut config = ServeConfig::from_env(data, addr, dry_run);
+    if let Some(template) = template {
+        config.template = template;
+    }
     if let Err(error) = serve(&config).await {
         eprintln!("SERVE FAILED: {error:#}");
         std::process::exit(1);

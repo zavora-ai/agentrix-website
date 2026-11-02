@@ -178,7 +178,21 @@ pub fn site_tracker(
 /// spending jobs, any open breach pauses the outward-acting ones. Answering
 /// and reporting keep running under breach; silence never scores. Returns
 /// `false`, committing nothing, when a charter is already in force.
-pub async fn seed_charter(charters: &dyn CharterStore, site_id: Uuid) -> KernelResult<bool> {
+/// The charter kind for a template: shops sell, blogs opine, news informs.
+pub fn site_kind_for(template: &str) -> SiteKind {
+    match template {
+        "shop" => SiteKind::Ecommerce,
+        "blog" => SiteKind::Personal,
+        "news" => SiteKind::Media,
+        _ => SiteKind::Business,
+    }
+}
+
+pub async fn seed_charter(
+    charters: &dyn CharterStore,
+    site_id: Uuid,
+    kind: SiteKind,
+) -> KernelResult<bool> {
     if charters.current(site_id).await?.is_some() {
         return Ok(false);
     }
@@ -187,7 +201,7 @@ pub async fn seed_charter(charters: &dyn CharterStore, site_id: Uuid) -> KernelR
     let charter = Charter {
         version: 1,
         site_id,
-        kind: SiteKind::Business,
+        kind,
         governance: Governance {
             roles: vec![RoleHolder {
                 principal: "owner".to_string(),

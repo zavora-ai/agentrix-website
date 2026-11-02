@@ -111,3 +111,30 @@ async fn rate_limit_bites() {
     assert_eq!(limited.status(), StatusCode::TOO_MANY_REQUESTS);
     assert!(limited.headers().contains_key("retry-after"));
 }
+
+#[test]
+fn every_template_digest_matches() {
+    for (template, pages) in [
+        ("business", agentrix_site_edge::business_site()),
+        ("shop", agentrix_site_edge::shop_site()),
+        ("blog", agentrix_site_edge::blog_site()),
+        ("news", agentrix_site_edge::news_site()),
+    ] {
+        let release = agentrix_site_edge::build_release(pages, template, vec!["fixture".into()]);
+        agentrix_site_edge::digest_match(&release)
+            .unwrap_or_else(|problems| panic!("{template}: {problems:?}"));
+        let kinds: Vec<_> = release.pages.iter().map(|page| page.kind).collect();
+        assert!(
+            kinds.contains(&awp_types::ContentKind::Page),
+            "{template} serves a home page"
+        );
+    }
+    let shop = agentrix_site_edge::shop_site();
+    assert_eq!(
+        shop.iter()
+            .filter(|page| page.kind == awp_types::ContentKind::Product)
+            .count(),
+        3,
+        "the shop carries three products"
+    );
+}

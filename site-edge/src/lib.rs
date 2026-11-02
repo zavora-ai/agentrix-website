@@ -11,6 +11,7 @@
 //! request, so publish and rollback swap what both audiences see without a
 //! restart.
 
+use awp_types::ContentKind;
 use std::collections::{HashMap, VecDeque};
 use std::net::IpAddr;
 use std::sync::{Arc, Mutex};
@@ -34,11 +35,15 @@ pub struct Fact {
     pub text: String,
 }
 
-/// A page of the site: its human content and the facts it asserts.
+/// A page of the site: its human content and the facts it asserts. The kind
+/// says what the page is — a standing page, a product, a post, an article —
+/// so shops, blogs and news sites share one release shape.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Page {
     /// URL slug, such as `services`.
     pub slug: String,
+    /// What the page is.
+    pub kind: ContentKind,
     /// Human title.
     pub title: String,
     /// Introductory paragraph.
@@ -77,6 +82,8 @@ pub struct Release {
 pub struct Twin {
     /// Page slug.
     pub slug: String,
+    /// What the page is.
+    pub kind: ContentKind,
     /// Page title.
     pub title: String,
     /// The page's facts, verbatim.
@@ -112,6 +119,7 @@ impl Current {
 pub fn business_site() -> Vec<Page> {
     vec![
         Page {
+            kind: ContentKind::Page,
             slug: "home".into(),
             title: "Harbor & Plum — Accounting for small firms".into(),
             intro: "A two-partner practice in Mombasa serving retailers and cafés.".into(),
@@ -131,6 +139,7 @@ pub fn business_site() -> Vec<Page> {
             ],
         },
         Page {
+            kind: ContentKind::Service,
             slug: "services".into(),
             title: "Services and fees".into(),
             intro: "Monthly bookkeeping, payroll and annual filings on fixed fees.".into(),
@@ -150,6 +159,7 @@ pub fn business_site() -> Vec<Page> {
             ],
         },
         Page {
+            kind: ContentKind::Page,
             slug: "contact".into(),
             title: "Contact and hours".into(),
             intro: "Visit the office or write any time; replies within one business day.".into(),
@@ -167,6 +177,170 @@ pub fn business_site() -> Vec<Page> {
                     text: "Reach the practice at hello@example.com.".into(),
                 },
             ],
+        },
+    ]
+}
+
+/// The fixture shop Phase 1 serves: a store home plus three products. Prices
+/// ride as facts; stock is volatile and lives in the commerce store, never in
+/// the release.
+pub fn shop_site() -> Vec<Page> {
+    vec![
+        Page {
+            kind: ContentKind::Page,
+            slug: "home".into(),
+            title: "Kikapu — fresh groceries in Nairobi".into(),
+            intro: "Order by noon for same-day delivery across Nairobi.".into(),
+            facts: vec![
+                Fact {
+                    id: "delivery".into(),
+                    text: "Same-day delivery for orders before noon.".into(),
+                },
+                Fact {
+                    id: "coverage".into(),
+                    text: "Delivers across Nairobi county.".into(),
+                },
+            ],
+        },
+        Page {
+            kind: ContentKind::Product,
+            slug: "sukuma-bunch".into(),
+            title: "Sukuma wiki bunch".into(),
+            intro: "Cut this morning on a Kiambu farm.".into(),
+            facts: vec![
+                Fact {
+                    id: "price".into(),
+                    text: "Price: KES 50.".into(),
+                },
+                Fact {
+                    id: "unit".into(),
+                    text: "Sold per 500g bunch.".into(),
+                },
+            ],
+        },
+        Page {
+            kind: ContentKind::Product,
+            slug: "arabica-250g".into(),
+            title: "AA arabica 250g".into(),
+            intro: "Single-origin Nyeri, roasted weekly.".into(),
+            facts: vec![
+                Fact {
+                    id: "price".into(),
+                    text: "Price: KES 850.".into(),
+                },
+                Fact {
+                    id: "roast".into(),
+                    text: "Medium roast, whole bean.".into(),
+                },
+            ],
+        },
+        Page {
+            kind: ContentKind::Product,
+            slug: "mango-crate".into(),
+            title: "Mango crate 5kg".into(),
+            intro: "Makueni Kent mangoes in season.".into(),
+            facts: vec![
+                Fact {
+                    id: "price".into(),
+                    text: "Price: KES 600.".into(),
+                },
+                Fact {
+                    id: "origin".into(),
+                    text: "Grown in Makueni county.".into(),
+                },
+            ],
+        },
+    ]
+}
+
+/// The fixture blog: a home plus three posts.
+pub fn blog_site() -> Vec<Page> {
+    vec![
+        Page {
+            kind: ContentKind::Page,
+            slug: "home".into(),
+            title: "The Long Rains — notes on building in Nairobi".into(),
+            intro: "Essays on startups, craft and the city.".into(),
+            facts: vec![Fact {
+                id: "cadence".into(),
+                text: "New essays every Sunday.".into(),
+            }],
+        },
+        Page {
+            kind: ContentKind::Post,
+            slug: "ship-small".into(),
+            title: "Ship small, ship weekly".into(),
+            intro: "Why the smallest releasable thing wins.".into(),
+            facts: vec![Fact {
+                id: "thesis".into(),
+                text: "Weekly releases beat quarterly launches.".into(),
+            }],
+        },
+        Page {
+            kind: ContentKind::Post,
+            slug: "talk-to-dukas".into(),
+            title: "Talk to dukas, not dashboards".into(),
+            intro: "What three kiosk owners taught us about pricing.".into(),
+            facts: vec![Fact {
+                id: "thesis".into(),
+                text: "Counter conversations set prices better than analytics.".into(),
+            }],
+        },
+        Page {
+            kind: ContentKind::Post,
+            slug: "repair-culture".into(),
+            title: "The repair culture dividend".into(),
+            intro: "Fixing beats replacing, in code and in kilns.".into(),
+            facts: vec![Fact {
+                id: "thesis".into(),
+                text: "Repair budgets return twice their cost.".into(),
+            }],
+        },
+    ]
+}
+
+/// The fixture news site: a home plus three articles.
+pub fn news_site() -> Vec<Page> {
+    vec![
+        Page {
+            kind: ContentKind::Page,
+            slug: "home".into(),
+            title: "Pwani Wire — Mombasa daily".into(),
+            intro: "The coast's morning brief.".into(),
+            facts: vec![Fact {
+                id: "cadence".into(),
+                text: "Published every morning at 6 EAT.".into(),
+            }],
+        },
+        Page {
+            kind: ContentKind::Article,
+            slug: "ferry-timetable".into(),
+            title: "Likoni ferry adds dawn crossings".into(),
+            intro: "Two extra sailings from Monday.".into(),
+            facts: vec![Fact {
+                id: "crossings".into(),
+                text: "Dawn crossings at 4:30 and 5:00 from Monday.".into(),
+            }],
+        },
+        Page {
+            kind: ContentKind::Article,
+            slug: "fish-prices".into(),
+            title: "Fish prices ease at Kongowea".into(),
+            intro: "Good catches push tilapia down a fifth.".into(),
+            facts: vec![Fact {
+                id: "prices".into(),
+                text: "Tilapia down twenty percent this week.".into(),
+            }],
+        },
+        Page {
+            kind: ContentKind::Article,
+            slug: "street-lights".into(),
+            title: "Old Town street lights restored".into(),
+            intro: "The county crew finished Ndia Kuu.".into(),
+            facts: vec![Fact {
+                id: "lights".into(),
+                text: "Ndia Kuu street lights work again.".into(),
+            }],
         },
     ]
 }
@@ -233,6 +407,7 @@ pub fn render_page(page: &Page, digest: &str) -> String {
 pub fn twin_of(page: &Page, digest: &str) -> Twin {
     Twin {
         slug: page.slug.clone(),
+        kind: page.kind,
         title: page.title.clone(),
         facts: page.facts.clone(),
         release: digest.to_string(),

@@ -16,6 +16,7 @@ fn config(dir: &tempfile::TempDir) -> ServeConfig {
         data: dir.path().join("data"),
         app: "demo".into(),
         site: "demo".into(),
+        template: "business".into(),
         addr: "127.0.0.1:0".into(),
         dry_run: true,
         baseten_key: None,
@@ -137,7 +138,7 @@ async fn setup(dir: &tempfile::TempDir) -> (ServeConfig, ProductStores, workflow
     let config = config(dir);
     std::fs::create_dir_all(&config.data).unwrap();
     let stores = ProductStores::open(&config.data).await.unwrap();
-    seed_demo(&stores, &config.site).await.unwrap();
+    seed_demo(&stores, &config.site, "business").await.unwrap();
     let kernel_stores = workflows::open_kernel_stores(&config.data).await.unwrap();
     (config, stores, kernel_stores)
 }

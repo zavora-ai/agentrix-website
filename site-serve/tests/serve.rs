@@ -14,6 +14,7 @@ fn config(dir: &tempfile::TempDir) -> ServeConfig {
         data: dir.path().join("data"),
         app: "demo".into(),
         site: "demo".into(),
+        template: "business".into(),
         addr: "127.0.0.1:0".into(),
         dry_run: true,
         baseten_key: None,
@@ -29,7 +30,7 @@ async fn seed_admits_serves_and_stocks_the_corpus() {
     let config = config(&dir);
     std::fs::create_dir_all(&config.data).unwrap();
     let stores = ProductStores::open(&config.data).await.unwrap();
-    let digest = seed_demo(&stores, &config.site).await.unwrap();
+    let digest = seed_demo(&stores, &config.site, "business").await.unwrap();
     let current = stores
         .releases
         .current(&config.site)
@@ -44,7 +45,7 @@ async fn seed_admits_serves_and_stocks_the_corpus() {
             .unwrap();
     assert!(!hits.is_empty(), "seeded facts retrieve");
     // Seeding twice keeps the first release: idempotent.
-    let again = seed_demo(&stores, &config.site).await.unwrap();
+    let again = seed_demo(&stores, &config.site, "business").await.unwrap();
     assert_eq!(again, digest);
 }
 
@@ -54,7 +55,7 @@ async fn workflows_execute_and_guard() {
     let config = config(&dir);
     std::fs::create_dir_all(&config.data).unwrap();
     let stores = ProductStores::open(&config.data).await.unwrap();
-    seed_demo(&stores, &config.site).await.unwrap();
+    seed_demo(&stores, &config.site, "business").await.unwrap();
     let current = Current::new(
         stores
             .releases
@@ -130,7 +131,7 @@ async fn runners_and_kernel_build_with_every_target() {
     let config = config(&dir);
     std::fs::create_dir_all(&config.data).unwrap();
     let stores = ProductStores::open(&config.data).await.unwrap();
-    seed_demo(&stores, &config.site).await.unwrap();
+    seed_demo(&stores, &config.site, "business").await.unwrap();
     let sessions: Arc<dyn adk_session::SessionService> =
         Arc::new(adk_session::InMemorySessionService::new());
     let model = agents::build_model(&config).unwrap();
@@ -197,7 +198,7 @@ async fn growth_runner_files_a_draft_live() {
         .unwrap_or_else(|_| "https://inference.baseten.co/v1".into());
     std::fs::create_dir_all(&config.data).unwrap();
     let stores = ProductStores::open(&config.data).await.unwrap();
-    seed_demo(&stores, &config.site).await.unwrap();
+    seed_demo(&stores, &config.site, "business").await.unwrap();
     let sessions: Arc<dyn adk_session::SessionService> =
         Arc::new(adk_session::InMemorySessionService::new());
     let session = sessions
@@ -323,7 +324,7 @@ async fn back_office_partition_carries_quotas() {
     let config = config(&dir);
     std::fs::create_dir_all(&config.data).unwrap();
     let stores = ProductStores::open(&config.data).await.unwrap();
-    seed_demo(&stores, &config.site).await.unwrap();
+    seed_demo(&stores, &config.site, "business").await.unwrap();
     let sessions: Arc<dyn adk_session::SessionService> =
         Arc::new(adk_session::InMemorySessionService::new());
     let model = agents::build_model(&config).unwrap();
@@ -480,4 +481,44 @@ async fn failed_runs_file_incident_cards() {
         "completed runs file nothing"
     );
     watcher.abort();
+}
+
+/// Templates seed per site type: the shop serves products and charters as
+/// Ecommerce.
+#[tokio::test]
+async fn shop_template_seeds_products_and_charters() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = config(&dir);
+    std::fs::create_dir_all(&config.data).unwrap();
+    let stores = ProductStores::open(&config.data).await.unwrap();
+    seed_demo(&stores, &config.site, "shop").await.unwrap();
+    let current = stores
+        .releases
+        .current(&config.site)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(current.provenance.template, "shop");
+    assert!(
+        current
+            .pages
+            .iter()
+            .any(|page| page.kind == awp_types::ContentKind::Product),
+        "the shop serves products"
+    );
+    let kernel_stores = workflows::open_kernel_stores(&config.data).await.unwrap();
+    assert!(
+        agentrix_site_serve::tracker::seed_charter(
+            kernel_stores.charters.as_ref(),
+            workflows::site_id(),
+            agentrix_site_serve::tracker::site_kind_for("shop"),
+        )
+        .await
+        .unwrap()
+    );
+    assert_eq!(
+        agentrix_site_serve::tracker::site_kind_for("blog"),
+        awp_types::SiteKind::Personal
+    );
+    assert_eq!(agentrix_site_serve::tracker::site_kind_for("news"), awp_types::SiteKind::Media);
 }

@@ -11,6 +11,7 @@ fn config(dir: &tempfile::TempDir) -> ServeConfig {
         data: dir.path().join("data"),
         app: "demo".into(),
         site: "demo".into(),
+        template: "business".into(),
         addr: "127.0.0.1:0".into(),
         dry_run: true,
         baseten_key: None,
@@ -24,7 +25,7 @@ async fn setup(dir: &tempfile::TempDir) -> (ServeConfig, ProductStores, workflow
     let config = config(dir);
     std::fs::create_dir_all(&config.data).unwrap();
     let stores = ProductStores::open(&config.data).await.unwrap();
-    seed_demo(&stores, &config.site).await.unwrap();
+    seed_demo(&stores, &config.site, "business").await.unwrap();
     let kernel_stores = workflows::open_kernel_stores(&config.data).await.unwrap();
     (config, stores, kernel_stores)
 }
@@ -48,15 +49,23 @@ async fn charter_seeds_once_and_validates() {
     let dir = tempfile::tempdir().unwrap();
     let (_, _, kernel_stores) = setup(&dir).await;
     assert!(
-        tracker::seed_charter(kernel_stores.charters.as_ref(), Uuid::nil())
-            .await
-            .unwrap(),
+        tracker::seed_charter(
+            kernel_stores.charters.as_ref(),
+            Uuid::nil(),
+            awp_types::SiteKind::Business,
+        )
+        .await
+        .unwrap(),
         "first seed commits"
     );
     assert!(
-        !tracker::seed_charter(kernel_stores.charters.as_ref(), Uuid::nil())
-            .await
-            .unwrap(),
+        !tracker::seed_charter(
+            kernel_stores.charters.as_ref(),
+            Uuid::nil(),
+            awp_types::SiteKind::Business,
+        )
+        .await
+        .unwrap(),
         "second seed commits nothing"
     );
     let current = kernel_stores
@@ -74,9 +83,13 @@ async fn charter_seeds_once_and_validates() {
 async fn spend_breach_pauses_the_spending_jobs() {
     let dir = tempfile::tempdir().unwrap();
     let (config, stores, kernel_stores) = setup(&dir).await;
-    tracker::seed_charter(kernel_stores.charters.as_ref(), Uuid::nil())
-        .await
-        .unwrap();
+    tracker::seed_charter(
+        kernel_stores.charters.as_ref(),
+        Uuid::nil(),
+        awp_types::SiteKind::Business,
+    )
+    .await
+    .unwrap();
     stores.growth.set_cap("demo", 100).await.unwrap();
     let reservation = stores.growth.reserve("demo", 95, "ads").await.unwrap();
     stores.growth.commit(&reservation.id).await.unwrap();
@@ -139,9 +152,13 @@ async fn open_breaches_pause_outward_acts_but_not_reports() {
 
     let dir = tempfile::tempdir().unwrap();
     let (config, stores, kernel_stores) = setup(&dir).await;
-    tracker::seed_charter(kernel_stores.charters.as_ref(), Uuid::nil())
-        .await
-        .unwrap();
+    tracker::seed_charter(
+        kernel_stores.charters.as_ref(),
+        Uuid::nil(),
+        awp_types::SiteKind::Business,
+    )
+    .await
+    .unwrap();
     stores
         .growth
         .set_target("demo", "qualified_leads", 100.0, Direction::Up, "revenue")

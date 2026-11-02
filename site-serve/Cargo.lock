@@ -312,6 +312,7 @@ dependencies = [
 name = "agentrix-site-edge"
 version = "0.1.0"
 dependencies = [
+ "awp-types",
  "axum",
  "chrono",
  "serde",
