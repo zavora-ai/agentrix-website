@@ -241,11 +241,17 @@ async fn migrate_webhook(
     if request.urls.is_empty() || request.urls.len() > 20 {
         return Err((StatusCode::BAD_REQUEST, "send 1 to 20 urls".into()));
     }
-    let fetch = agentrix_site_migrate::HttpFetch::new()
-        .map_err(|e| (StatusCode::BAD_GATEWAY, e.to_string()))?;
-    let evidence = agentrix_site_migrate::crawl(&fetch, &request.urls)
-        .map_err(|e| (StatusCode::BAD_GATEWAY, e.to_string()))?;
-    let (candidate, report) = agentrix_site_migrate::migrate(&evidence);
+    // The crawl is blocking I/O over a synchronous client: running it on a
+    // runtime thread panics, so it gets its own blocking thread.
+    let urls = request.urls.clone();
+    let (candidate, report) = tokio::task::spawn_blocking(move || {
+        let fetch = agentrix_site_migrate::HttpFetch::new()?;
+        let evidence = agentrix_site_migrate::crawl(&fetch, &urls)?;
+        Ok::<_, agentrix_site_migrate::crawl::CrawlError>(agentrix_site_migrate::migrate(&evidence))
+    })
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+    .map_err(|e| (StatusCode::BAD_GATEWAY, e.to_string()))?;
     let card =
         agentrix_site_migrate::file_go_live(&migrate.cards, &migrate.site, &candidate, &report)
             .await
