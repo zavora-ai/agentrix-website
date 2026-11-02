@@ -520,5 +520,8 @@ async fn shop_template_seeds_products_and_charters() {
         agentrix_site_serve::tracker::site_kind_for("blog"),
         awp_types::SiteKind::Personal
     );
-    assert_eq!(agentrix_site_serve::tracker::site_kind_for("news"), awp_types::SiteKind::Media);
+    assert_eq!(
+        agentrix_site_serve::tracker::site_kind_for("news"),
+        awp_types::SiteKind::Media
+    );
 }

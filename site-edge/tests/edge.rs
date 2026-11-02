@@ -81,16 +81,8 @@ async fn edge_serves_pages_twins_and_cli() {
     let twin: serde_json::Value = serde_json::from_slice(&body).unwrap();
     assert_eq!(twin["facts"].as_array().unwrap().len(), 3);
 
-    let cli = app
-        .oneshot(
-            Request::post("/cli")
-                .header("content-type", "application/json")
-                .body(Body::from(r#"{"command":"twin home"}"#))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(cli.status(), StatusCode::OK);
+    let cli = agentrix_site_edge::run_command(&release(), "twin home");
+    assert!(cli.ok, "{}", cli.text);
 }
 
 #[tokio::test]

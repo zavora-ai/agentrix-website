@@ -9,6 +9,7 @@
 //! scripts the model for offline runs.
 
 pub mod agents;
+pub mod cli;
 pub mod signals;
 pub mod tracker;
 pub mod workflows;
@@ -16,8 +17,8 @@ pub mod workflows;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use agentrix_site_concierge::Corpus;
 use agentrix_site_commerce::{Commerce, LogProvider};
+use agentrix_site_concierge::Corpus;
 use agentrix_site_defense::{Freeze, QuietHours};
 use agentrix_site_edge::{
     Current, RateLimit, blog_site, build_release, business_site, news_site, router_on, shop_site,
@@ -349,13 +350,32 @@ pub async fn serve(config: &ServeConfig) -> anyhow::Result<()> {
         tracing::info!(jobs = ?restored, "breach pauses restored");
     }
 
+    let tokens = Arc::new(
+        cli::TokenStore::open(&format!(
+            "sqlite://{}?mode=rwc",
+            config.data.join("tokens.db").display()
+        ))
+        .await
+        .map_err(anyhow_err)?,
+    );
+    let cli_state = Arc::new(cli::CliState {
+        site: config.site.clone(),
+        current: current.clone(),
+        tokens,
+        commerce: stores.commerce.clone(),
+        cards: stores.cards.clone(),
+        corpus: stores.corpus.clone(),
+        sink: sink.clone(),
+    });
     let intake = Arc::new(signals::Intake {
         site: config.site.clone(),
         corpus: stores.corpus.clone(),
         sink,
     });
 
-    let app = router_on(&current, RateLimit::default()).merge(signals::intake_routes(intake));
+    let app = router_on(&current, RateLimit::default())
+        .merge(signals::intake_routes(intake))
+        .merge(cli::cli_routes(cli_state));
     let listener = tokio::net::TcpListener::bind(&config.addr)
         .await
         .map_err(anyhow_err)?;

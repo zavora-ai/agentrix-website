@@ -14,6 +14,6 @@ pub mod signals;
 pub mod visitor;
 
 pub use answer::{Answer, Citation, answer};
-pub use corpus::{Chunk, Corpus, ScoredChunk, retrieve};
+pub use corpus::{Chunk, Corpus, ScoredChunk, retrieve, retrieve_doc};
 pub use signals::{EscalationSignal, LeadSignal, ReviewSignal, Signal, VisitorEvent, emit};
 pub use visitor::Visitor;

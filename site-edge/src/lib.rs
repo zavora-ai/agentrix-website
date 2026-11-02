@@ -20,7 +20,7 @@ use std::time::{Duration, Instant};
 use axum::extract::{ConnectInfo, Path, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode};
 use axum::response::{Html, IntoResponse, Json, Response};
-use axum::routing::{get, post};
+use axum::routing::get;
 use axum::{Router, middleware};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest as _, Sha256};
@@ -667,17 +667,6 @@ async fn twin(State(state): State<EdgeState>, Path(slug): Path<String>) -> impl 
     }
 }
 
-async fn cli(State(state): State<EdgeState>, Json(body): Json<CliRequest>) -> impl IntoResponse {
-    let release = state.current.get();
-    let answer = run_command(&release, &body.command);
-    let status = if answer.ok {
-        StatusCode::OK
-    } else {
-        StatusCode::BAD_REQUEST
-    };
-    (status, Json(answer)).into_response()
-}
-
 fn routes(current: Arc<Current>, limit: RateLimit) -> Router {
     let state = EdgeState {
         current,
@@ -689,7 +678,6 @@ fn routes(current: Arc<Current>, limit: RateLimit) -> Router {
         .route("/", get(index))
         .route("/p/{slug}", get(human_page))
         .route("/twin/{slug}", get(twin))
-        .route("/cli", post(cli))
         .layer(middleware::from_fn(move |request, next| {
             let guard = guard.clone();
             async move { rate_limit(guard, request, next).await }

@@ -61,6 +61,9 @@ pub struct LeadSignal {
     pub channel: String,
     /// Opaque contact reference.
     pub contact_ref: String,
+    /// Consent receipt ids the capturer asserts, empty when unknown.
+    #[serde(default)]
+    pub consent: Vec<String>,
 }
 
 /// A support escalation for the Chief of Staff.
@@ -134,6 +137,7 @@ pub fn emit(event: &VisitorEvent) -> Vec<Signal> {
             vec![Signal::LeadCaptured(LeadSignal {
                 channel: channel.clone(),
                 contact_ref: contact_ref.clone(),
+                consent: Vec::new(),
             })]
         }
         VisitorEvent::HandoffAsked { reason } => {

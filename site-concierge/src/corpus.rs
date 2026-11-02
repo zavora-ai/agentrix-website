@@ -142,6 +142,22 @@ pub async fn retrieve(
     Ok(scored)
 }
 
+/// Quotes one document for a question: how a single product answers.
+pub async fn retrieve_doc(
+    corpus: &Corpus,
+    site: &str,
+    doc: &str,
+    query: &str,
+    k: usize,
+) -> Result<Vec<ScoredChunk>, CorpusError> {
+    retrieve(corpus, site, query, usize::MAX).await.map(|hits| {
+        hits.into_iter()
+            .filter(|hit| hit.chunk.doc == doc)
+            .take(k)
+            .collect()
+    })
+}
+
 /// Lowercased alphanumeric tokens; short words stay, they ground precisely.
 pub fn tokenize(text: &str) -> Vec<String> {
     text.split(|c: char| !c.is_ascii_alphanumeric())

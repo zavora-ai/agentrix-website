@@ -40,7 +40,12 @@ pub fn translate(signal: &ProductSignal, visitor: &str) -> SignalKind {
         ProductSignal::LeadCaptured(lead) => SignalKind::LeadCaptured {
             lead_ref: LeadRef(lead.contact_ref.clone()),
             source: Channel::from(lead.channel.as_str()),
-            consent: Vec::new(),
+            consent: lead
+                .consent
+                .iter()
+                .filter_map(|receipt| uuid::Uuid::parse_str(receipt).ok())
+                .map(awp_types::ConsentReceiptRef)
+                .collect(),
             answers: BTreeMap::new(),
         },
         ProductSignal::SupportEscalation(escalation) => SignalKind::SupportEscalation {
@@ -241,6 +246,7 @@ mod tests {
         let lead = ProductSignal::LeadCaptured(agentrix_site_concierge::LeadSignal {
             channel: "carrier-pigeon".into(),
             contact_ref: "c1".into(),
+            consent: Vec::new(),
         });
         assert_eq!(translate(&lead, "v").name(), "lead_captured");
         let escalation =
