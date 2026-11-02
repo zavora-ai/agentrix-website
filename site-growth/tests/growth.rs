@@ -118,6 +118,7 @@ async fn sales_rep_drafts_and_ads_never_spend() {
     let leads = vec![LeadSignal {
         channel: "email".into(),
         contact_ref: "c-1".into(),
+        consent: Vec::new(),
     }];
     let filed = nurture("demo", &cards, &leads).await.unwrap();
     assert_eq!(filed.len(), 1);
