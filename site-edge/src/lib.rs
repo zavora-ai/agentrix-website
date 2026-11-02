@@ -222,7 +222,7 @@ pub fn shop_site() -> Vec<Page> {
             kind: ContentKind::Product,
             slug: "arabica-250g".into(),
             title: "AA arabica 250g".into(),
-            intro: "Single-origin Nyeri, roasted weekly.".into(),
+            intro: "Single-origin Nyeri coffee, roasted weekly.".into(),
             facts: vec![
                 Fact {
                     id: "price".into(),
