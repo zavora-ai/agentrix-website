@@ -10,6 +10,7 @@
 
 pub mod agents;
 pub mod cli;
+pub mod console;
 pub mod shop;
 pub mod signals;
 pub mod tracker;
@@ -379,10 +380,18 @@ pub async fn serve(config: &ServeConfig) -> anyhow::Result<()> {
         commerce: stores.commerce.clone(),
         site: config.site.clone(),
     });
+    let console_state = Arc::new(console::ConsoleState {
+        site: config.site.clone(),
+        cards: stores.cards.clone(),
+        commerce: stores.commerce.clone(),
+        growth: stores.growth.clone(),
+        tokens: cli_state.tokens.clone(),
+    });
     let app = router_on(&current, RateLimit::default())
         .merge(signals::intake_routes(intake))
         .merge(cli::cli_routes(cli_state))
-        .merge(shop::shop_routes(shop_state));
+        .merge(shop::shop_routes(shop_state))
+        .merge(console::console_routes(console_state));
     let listener = tokio::net::TcpListener::bind(&config.addr)
         .await
         .map_err(anyhow_err)?;
