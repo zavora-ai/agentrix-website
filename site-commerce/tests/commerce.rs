@@ -256,3 +256,100 @@ fn open_provider_fails_fast_without_network() {
     let err = provider.charge(&intent).unwrap_err().to_string();
     assert!(err.contains("circuit open"), "{err}");
 }
+
+/// Orders hold against stock, complete on approval, cancel by restoring, and
+/// never oversell: the reservation is atomic.
+#[tokio::test]
+async fn orders_hold_complete_and_never_oversell() {
+    use agentrix_site_commerce::{NewOrder, OrderError, OrderState};
+
+    let dir = tempfile::tempdir().unwrap();
+    let (commerce, _, cards) = setup(&dir, Arc::new(LogProvider::default())).await;
+    commerce
+        .set_stock("demo", "arabica-250g", 2, 850_000_000, "KES")
+        .await
+        .unwrap();
+
+    let hold = |key: &str, qty: i64| NewOrder {
+        sku: "arabica-250g".into(),
+        qty,
+        buyer: "agent:stall-7".into(),
+        idempotency_key: key.into(),
+    };
+    let (order, card) = commerce
+        .order_hold("demo", &cards, hold("k1", 2))
+        .await
+        .unwrap();
+    assert_eq!(order.state, OrderState::Held);
+    assert_eq!(order.total_micro, 1_700_000_000);
+    assert_eq!(
+        commerce
+            .stock_of("demo", "arabica-250g")
+            .await
+            .unwrap()
+            .unwrap()
+            .qty,
+        0
+    );
+
+    // No units left: the second hold refuses without touching the card file.
+    let refused = commerce.order_hold("demo", &cards, hold("k2", 1)).await;
+    assert!(
+        matches!(refused, Err(OrderError::OutOfStock { .. })),
+        "{refused:?}"
+    );
+
+    // Same key: the first order back, no second card.
+    let (again, _) = commerce
+        .order_hold("demo", &cards, hold("k1", 2))
+        .await
+        .unwrap();
+    assert_eq!(again.id, order.id);
+
+    // Completion needs the approval.
+    let early = commerce.order_complete(&cards, &order.id, &card.id).await;
+    assert!(
+        matches!(early, Err(OrderError::BadApproval(_))),
+        "{early:?}"
+    );
+    cards
+        .decide(&card.id, Decision::Approve, &AutoApprove)
+        .await
+        .unwrap();
+    let done = commerce
+        .order_complete(&cards, &order.id, &card.id)
+        .await
+        .unwrap();
+    assert_eq!(done.state, OrderState::Completed);
+    let again = commerce
+        .order_complete(&cards, &order.id, &card.id)
+        .await
+        .unwrap();
+    assert_eq!(again.state, OrderState::Completed);
+
+    // Cancel restores.
+    commerce
+        .set_stock("demo", "sukuma-bunch", 5, 50_000_000, "KES")
+        .await
+        .unwrap();
+    let cancel_hold = NewOrder {
+        sku: "sukuma-bunch".into(),
+        qty: 3,
+        buyer: "agent:stall-7".into(),
+        idempotency_key: "k3".into(),
+    };
+    let (order, _) = commerce
+        .order_hold("demo", &cards, cancel_hold)
+        .await
+        .unwrap();
+    commerce.order_cancel(&order.id).await.unwrap();
+    assert_eq!(
+        commerce
+            .stock_of("demo", "sukuma-bunch")
+            .await
+            .unwrap()
+            .unwrap()
+            .qty,
+        5
+    );
+}

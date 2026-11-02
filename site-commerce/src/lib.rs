@@ -8,9 +8,11 @@
 //! idempotency key returns one intent; completing twice charges once.
 
 pub mod live;
+pub mod orders;
 pub mod payments;
 
 pub use live::StripeProvider;
+pub use orders::{NewOrder, Order, OrderError, OrderState, Stock};
 pub use payments::{
     Commerce, IntentState, LogProvider, NewPayment, PaymentError, PaymentIntent, PaymentProvider,
     Receipt,

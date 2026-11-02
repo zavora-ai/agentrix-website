@@ -17,6 +17,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use agentrix_site_concierge::Corpus;
+use agentrix_site_commerce::{Commerce, LogProvider};
 use agentrix_site_defense::{Freeze, QuietHours};
 use agentrix_site_edge::{
     Current, RateLimit, blog_site, build_release, business_site, news_site, router_on, shop_site,
@@ -86,6 +87,8 @@ pub struct ProductStores {
     pub growth: Arc<Growth>,
     /// Freeze switch and defense audit.
     pub freeze: Arc<Freeze>,
+    /// Stock and held orders.
+    pub commerce: Arc<Commerce>,
 }
 
 impl ProductStores {
@@ -106,6 +109,11 @@ impl ProductStores {
             corpus: Arc::new(Corpus::open(&url("corpus.db")).await.map_err(anyhow_err)?),
             growth: Arc::new(Growth::open(&url("growth.db")).await.map_err(anyhow_err)?),
             freeze: Arc::new(Freeze::open(&url("defense.db")).await.map_err(anyhow_err)?),
+            commerce: Arc::new(
+                Commerce::open(&url("commerce.db"), Arc::new(LogProvider::default()))
+                    .await
+                    .map_err(anyhow_err)?,
+            ),
         })
     }
 }
@@ -140,6 +148,19 @@ pub async fn seed_demo(
         _ => (business_site(), "business"),
     };
     let release = build_release(pages, name, vec!["seed".into()]);
+    if template == "shop" {
+        for (sku, qty, unit_micro) in [
+            ("sukuma-bunch", 10, 50_000_000),
+            ("arabica-250g", 10, 850_000_000),
+            ("mango-crate", 10, 600_000_000),
+        ] {
+            stores
+                .commerce
+                .set_stock(site, sku, qty, unit_micro, "KES")
+                .await
+                .map_err(anyhow_err)?;
+        }
+    }
     let card = stores
         .cards
         .file(NewCard::new(

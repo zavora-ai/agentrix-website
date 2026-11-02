@@ -160,7 +160,7 @@ pub fn fee_for(amount_micro: i64) -> i64 {
 
 /// The held intents in one SQLite database, charging through one provider.
 pub struct Commerce {
-    pool: sqlx::sqlite::SqlitePool,
+    pub(crate) pool: sqlx::sqlite::SqlitePool,
     provider: Arc<dyn PaymentProvider>,
 }
 
@@ -189,6 +189,9 @@ impl Commerce {
         )
         .execute(&pool)
         .await?;
+        crate::orders::migrate(&pool)
+            .await
+            .map_err(|e| PaymentError::Store(e.to_string()))?;
         Ok(Self { pool, provider })
     }
 

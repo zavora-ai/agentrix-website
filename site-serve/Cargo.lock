@@ -278,6 +278,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "agentrix-site-commerce"
+version = "0.1.0"
+dependencies = [
+ "agentrix-site-defense",
+ "agentrix-site-growth",
+ "agentrix-site-inbox",
+ "chrono",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "sqlx",
+ "thiserror",
+ "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
 name = "agentrix-site-concierge"
 version = "0.1.0"
 dependencies = [
@@ -401,6 +419,7 @@ dependencies = [
  "adk-server",
  "adk-session",
  "adk-tool",
+ "agentrix-site-commerce",
  "agentrix-site-concierge",
  "agentrix-site-defense",
  "agentrix-site-edge",
